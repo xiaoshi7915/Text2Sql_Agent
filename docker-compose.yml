@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wenshu-backend
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+    environment:
+      - FLASK_APP=run.py
+      - FLASK_ENV=production
+      - MYSQL_HOST=db
+      - MYSQL_USER=wenshu
+      - MYSQL_PASSWORD=wenshu123
+      - MYSQL_DATABASE=wenshu_mcp
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    networks:
+      - wenshu-network
+    restart: unless-stopped
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wenshu-frontend
+    environment:
+      - NODE_ENV=production
+      - PUBLIC_URL=http://localhost:8087
+      - VUE_APP_API_URL=http://localhost:5000
+    ports:
+      - "8087:80"
+    depends_on:
+      - backend
+    networks:
+      - wenshu-network
+    restart: unless-stopped
+
+  # 数据库服务
+  db:
+    image: mysql:8.0
+    container_name: wenshu-db
+    volumes:
+      - wenshu-db-data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=wenshu_mcp
+      - MYSQL_USER=wenshu
+      - MYSQL_PASSWORD=wenshu123
+    ports:
+      - "3306:3306"
+    networks:
+      - wenshu-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  wenshu-db-data:
+
+networks:
+  wenshu-network:
+    driver: bridge 
