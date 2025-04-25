@@ -45,6 +45,10 @@ def create_app():
     migrate.init_app(app, db)
     jwt.init_app(app)
     
+    # 注册认证蓝图
+    from .api.auth import auth_bp
+    app.register_blueprint(auth_bp)
+    
     # 注册蓝图
     from .api import datasources_bp
     app.register_blueprint(datasources_bp)

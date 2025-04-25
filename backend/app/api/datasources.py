@@ -7,6 +7,9 @@ import logging
 from . import datasources_bp
 from ..services.datasource_service import DataSourceService
 from ..services import datasource_service
+from ..models.datasource import DataSource
+from ..utils.encryption import decrypt_password
+from ..services.db_connector import ConnectorFactory
 
 @datasources_bp.route('/list', methods=['GET'])
 def get_datasources():
@@ -125,4 +128,166 @@ def test_connection():
                 'original_error': str(e),
                 'error_type': 'server_error'
             }
+        }), 500
+
+@datasources_bp.route('/<int:datasource_id>/tables', methods=['GET'])
+def get_tables(datasource_id):
+    """获取数据源中的所有表"""
+    try:
+        # 获取数据源信息
+        datasource = DataSource.query.get(datasource_id)
+        if not datasource:
+            return jsonify({
+                'success': False,
+                'error': f'数据源ID {datasource_id} 不存在'
+            }), 404
+        
+        # 获取数据库连接信息
+        try:
+            password = decrypt_password(datasource.password)
+        except Exception as e:
+            logging.error(f"密码解密失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f"密码解密失败，无法连接到数据源"
+            }), 500
+        
+        # 创建连接器
+        connector = ConnectorFactory.create_connector(
+            datasource.ds_type,
+            datasource.host,
+            datasource.port,
+            datasource.database,
+            datasource.username,
+            password
+        )
+        
+        # 获取所有表
+        tables = connector.get_tables()
+        
+        # 返回表列表
+        return jsonify({
+            'success': True,
+            'data': tables
+        }), 200
+    
+    except Exception as e:
+        logging.error(f"获取表列表时发生错误: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f"服务器错误: {str(e)}"
+        }), 500
+
+@datasources_bp.route('/<int:datasource_id>/schema', methods=['GET'])
+def get_table_schema(datasource_id):
+    """获取数据源中指定表的结构"""
+    try:
+        # 获取表名参数
+        table_name = request.args.get('table')
+        if not table_name:
+            return jsonify({
+                'success': False,
+                'error': '未提供表名'
+            }), 400
+        
+        # 获取数据源信息
+        datasource = DataSource.query.get(datasource_id)
+        if not datasource:
+            return jsonify({
+                'success': False,
+                'error': f'数据源ID {datasource_id} 不存在'
+            }), 404
+        
+        # 获取数据库连接信息
+        try:
+            password = decrypt_password(datasource.password)
+        except Exception as e:
+            logging.error(f"密码解密失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f"密码解密失败，无法连接到数据源"
+            }), 500
+        
+        # 创建连接器
+        connector = ConnectorFactory.create_connector(
+            datasource.ds_type,
+            datasource.host,
+            datasource.port,
+            datasource.database,
+            datasource.username,
+            password
+        )
+        
+        # 获取表结构
+        schema = connector.get_table_schema(table_name)
+        
+        # 返回表结构
+        return jsonify({
+            'success': True,
+            'data': schema
+        }), 200
+    
+    except Exception as e:
+        logging.error(f"获取表结构时发生错误: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f"服务器错误: {str(e)}"
+        }), 500
+
+@datasources_bp.route('/<int:datasource_id>/sample', methods=['GET'])
+def get_sample_data(datasource_id):
+    """获取数据源中指定表的样例数据"""
+    try:
+        # 获取表名和限制行数参数
+        table_name = request.args.get('table')
+        limit = request.args.get('limit', default=10, type=int)
+        
+        if not table_name:
+            return jsonify({
+                'success': False,
+                'error': '未提供表名'
+            }), 400
+        
+        # 获取数据源信息
+        datasource = DataSource.query.get(datasource_id)
+        if not datasource:
+            return jsonify({
+                'success': False,
+                'error': f'数据源ID {datasource_id} 不存在'
+            }), 404
+        
+        # 获取数据库连接信息
+        try:
+            password = decrypt_password(datasource.password)
+        except Exception as e:
+            logging.error(f"密码解密失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f"密码解密失败，无法连接到数据源"
+            }), 500
+        
+        # 创建连接器
+        connector = ConnectorFactory.create_connector(
+            datasource.ds_type,
+            datasource.host,
+            datasource.port,
+            datasource.database,
+            datasource.username,
+            password
+        )
+        
+        # 获取样例数据
+        sample_data = connector.get_sample_data(table_name, limit)
+        
+        # 返回样例数据
+        return jsonify({
+            'success': True,
+            'data': sample_data
+        }), 200
+    
+    except Exception as e:
+        logging.error(f"获取样例数据时发生错误: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f"服务器错误: {str(e)}"
         }), 500 

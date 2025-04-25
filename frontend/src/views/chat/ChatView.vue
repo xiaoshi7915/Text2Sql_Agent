@@ -21,7 +21,8 @@
                 :command="model.id"
                 :class="{ 'is-active': selectedModel === model.id }"
               >
-                {{ model.name }} ({{ model.type }})
+                {{ model.name }} ({{ model.model_type }})
+                <el-tag size="small" type="success" v-if="model.is_default">默认</el-tag>
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -35,6 +36,12 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
+              <div class="datasource-dropdown-header">
+                <span>可用数据源</span>
+                <el-button size="small" type="primary" text @click.stop="refreshDatasources">
+                  <el-icon><icon-refresh /></el-icon>刷新
+                </el-button>
+              </div>
               <el-dropdown-item 
                 v-for="source in availableDataSources" 
                 :key="source.id" 
@@ -44,10 +51,13 @@
                   :value="selectedDataSources.includes(source.id)"
                   @click.stop="toggleDataSource(source.id)"
                 >
-                  {{ source.name }} ({{ source.type }})
+                  {{ source.name }} ({{ source.ds_type }})
+                  <el-tag size="small" :type="source.connection_status === 'connected' || source.status?.is_connected ? 'success' : 'danger'">
+                    {{ source.connection_status === 'connected' || source.status?.is_connected ? '已连接' : '未连接' }}
+                  </el-tag>
                 </el-checkbox>
               </el-dropdown-item>
-              <el-dropdown-item divided command="manage">管理数据源</el-dropdown-item>
+              <el-dropdown-item divided command="view">管理数据源</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -266,7 +276,7 @@
               :rows="3"
               placeholder="输入您的问题..."
               resize="none"
-              @keydown.enter.ctrl.prevent="sendMessage"
+              @keydown.enter.prevent="sendMessage"
             />
             
             <el-button 
@@ -280,7 +290,7 @@
           </div>
           
           <div class="input-tips">
-            按 Ctrl + Enter 发送消息
+            按 Enter 发送消息
           </div>
         </div>
       </div>
@@ -289,68 +299,162 @@
     <!-- 数据源预览抽屉 -->
     <el-drawer
       v-model="showDataSourcePanel"
-      title="数据源预览"
-      direction="rtl"
-      size="60%"
+      title="数据源详情"
+      size="50%"
+      :destroy-on-close="false"
     >
-      <el-tabs type="border-card">
-        <el-tab-pane label="元数据">
-          <div class="metadata-view">
-            <el-table :data="dataSourceMetadata" border>
+      <div class="datasource-panel">
+        <div class="panel-header">
+          <h3>数据表结构</h3>
+          <el-select 
+            v-model="currentDataSourceId" 
+            placeholder="选择数据源" 
+            @change="onDataSourceChange"
+            style="width: 200px;"
+          >
+            <el-option
+              v-for="source in availableDataSources.filter(ds => selectedDataSources.includes(ds.id))"
+              :key="source.id"
+              :label="`${source.name} (${source.ds_type})`"
+              :value="source.id"
+            />
+          </el-select>
+        </div>
+        
+        <el-divider content-position="left">表列表</el-divider>
+        
+        <div class="table-list" v-loading="loadingMetadata">
+          <el-empty v-if="dataSourceMetadata.length === 0" description="暂无表数据" />
+          <div v-else class="table-list-content">
+            <el-table 
+              :data="dataSourceMetadata" 
+              style="width: 100%" 
+              @row-click="(row) => {selectedTable = row.tableName; viewTableDetails(row.tableName)}"
+              highlight-current-row
+              :max-height="300"
+            >
               <el-table-column prop="tableName" label="表名" width="180" />
-              <el-table-column prop="description" label="描述" width="180" />
-              <el-table-column prop="rowCount" label="行数" />
-              <el-table-column label="操作">
+              <el-table-column prop="description" label="表描述" min-width="180" />
+              <el-table-column prop="rowCount" label="行数" width="120" align="right">
                 <template #default="scope">
-                  <el-button size="small" @click="viewTableDetails(scope.row)">
-                    查看详情
-                  </el-button>
+                  {{ scope.row.rowCount ? scope.row.rowCount.toLocaleString() : '-' }}
                 </template>
               </el-table-column>
             </el-table>
           </div>
-        </el-tab-pane>
-        <el-tab-pane label="样例数据">
-          <div class="sample-data-view">
-            <el-select v-model="selectedTable" placeholder="选择表" style="width: 100%; margin-bottom: 15px;">
-              <el-option
-                v-for="table in availableTables"
-                :key="table.name"
-                :label="table.name"
-                :value="table.name"
-              />
-            </el-select>
+        </div>
+        
+        <el-divider content-position="left">表结构信息</el-divider>
+        
+        <el-tabs v-model="activeTab" type="border-card" class="table-details">
+          <el-tab-pane label="表结构" name="schema">
+            <div v-if="currentTableName" class="table-name-header">
+              <h4>{{ currentTableName }}</h4>
+              <p v-if="currentTableDescription">{{ currentTableDescription }}</p>
+            </div>
             
-            <el-table v-if="selectedTable" :data="sampleData" border style="width: 100%">
-              <el-table-column 
-                v-for="col in sampleColumns" 
-                :key="col" 
-                :prop="col" 
-                :label="col" 
-              />
-            </el-table>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
+            <div v-loading="loadingSchema">
+              <el-empty v-if="!tableSchema || tableSchema.length === 0" description="请先选择一个表" />
+              <el-table v-else :data="tableSchema" style="width: 100%">
+                <el-table-column prop="column_name" label="字段名" width="150" />
+                <el-table-column prop="description" label="字段注释" min-width="160">
+                  <template #default="scope">
+                    {{ scope.row.description || '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="data_type" label="数据类型" width="120" />
+                <el-table-column prop="column_type" label="字段长度" width="120">
+                  <template #default="scope">
+                    {{ scope.row.column_type ? scope.row.column_type.replace(scope.row.data_type, '') : '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="is_nullable" label="允许为空" width="100">
+                  <template #default="scope">
+                    <el-tag :type="scope.row.is_nullable ? 'info' : 'danger'" size="small">
+                      {{ scope.row.is_nullable ? '是' : '否' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="is_primary_key" label="主键" width="80">
+                  <template #default="scope">
+                    <el-tag v-if="scope.row.is_primary_key" type="success" size="small">是</el-tag>
+                    <span v-else>-</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-tab-pane>
+          
+          <el-tab-pane label="样例数据" name="sample">
+            <div v-loading="loadingSample">
+              <el-empty v-if="!sampleData || sampleData.length === 0" description="暂无样例数据" />
+              <div v-else>
+                <el-alert
+                  type="info"
+                  title="样例数据展示（最多5条记录）"
+                  :closable="false"
+                  show-icon
+                  style="margin-bottom: 10px;"
+                />
+                <el-table :data="sampleData.slice(0, 5)" style="width: 100%" border>
+                  <el-table-column 
+                    v-for="column in Object.keys(sampleData[0] || {})" 
+                    :key="column" 
+                    :prop="column" 
+                    :label="column" 
+                    min-width="120"
+                  >
+                    <template #default="scope">
+                      <span v-if="scope.row[column] === null">NULL</span>
+                      <span v-else-if="typeof scope.row[column] === 'object'">{{ JSON.stringify(scope.row[column]) }}</span>
+                      <span v-else>{{ scope.row[column] }}</span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
     </el-drawer>
     
     <!-- 表详情对话框 -->
     <el-dialog v-model="tableDetailsVisible" title="表结构详情" width="70%">
-      <el-table :data="tableColumns" border style="width: 100%">
-        <el-table-column prop="columnName" label="列名" width="180" />
-        <el-table-column prop="dataType" label="数据类型" width="120" />
-        <el-table-column prop="nullable" label="可为空">
-          <template #default="scope">
-            {{ scope.row.nullable ? '是' : '否' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="isPrimaryKey" label="主键">
-          <template #default="scope">
-            {{ scope.row.isPrimaryKey ? '是' : '否' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" />
-      </el-table>
+      <div v-loading="loadingTableDetails">
+        <div class="table-detail-header" v-if="tableColumns.length > 0">
+          <div class="table-name">{{ currentTableName }}</div>
+          <div class="table-description">{{ currentTableDescription }}</div>
+        </div>
+        
+        <el-alert
+          v-if="tableColumns.length === 0 && !loadingTableDetails"
+          title="未获取到表结构信息"
+          type="warning"
+          description="该表可能不存在或没有权限访问"
+          :closable="false"
+          show-icon
+        />
+        
+        <el-table :data="tableColumns" border stripe style="width: 100%; margin-top: 15px;">
+          <el-table-column prop="columnName" label="列名" width="180" />
+          <el-table-column prop="dataType" label="数据类型" width="150" />
+          <el-table-column prop="nullable" label="可为空" width="80">
+            <template #default="scope">
+              <el-tag :type="scope.row.nullable ? 'info' : 'danger'" size="small">
+                {{ scope.row.nullable ? '是' : '否' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="isPrimaryKey" label="主键" width="80">
+            <template #default="scope">
+              <el-tag :type="scope.row.isPrimaryKey ? 'success' : 'info'" size="small">
+                {{ scope.row.isPrimaryKey ? '是' : '否' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="description" label="描述" min-width="200" />
+        </el-table>
+      </div>
     </el-dialog>
     
     <!-- 重命名会话对话框 -->
@@ -367,7 +471,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch, onUnmounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as marked from 'marked'
@@ -375,6 +479,11 @@ import DOMPurify from 'dompurify'
 import { v4 as uuidv4 } from 'uuid'
 // 引入echarts (需要安装: npm install echarts)
 import * as echarts from 'echarts'
+// 引入API函数
+import { getModels } from '@/api/model'
+import { getDatasources, getTables, getTableSchema, querySampleData } from '@/api/datasource'
+import { Refresh } from '@element-plus/icons-vue'
+import { NewIcon } from '@element-plus/icons-vue'
 
 export default {
   name: 'ChatView',
@@ -422,23 +531,78 @@ export default {
     const tableDetailsVisible = ref(false)
     const tableColumns = ref([])
     
-    // 数据源配置
-    const availableDataSources = ref([
-      { id: 1, name: '生产环境MySQL', type: 'MySQL' },
-      { id: 2, name: '测试环境PostgreSQL', type: 'PostgreSQL' },
-      { id: 3, name: '开发环境SQL Server', type: 'SQLServer' },
-      { id: 4, name: '历史数据Oracle', type: 'Oracle' }
-    ])
-    const selectedDataSources = ref([1]) // 默认选择第一个数据源
+    // 加载状态
+    const loadingMetadata = ref(false)
+    const loadingSampleData = ref(false)
+    const loadingTableDetails = ref(false)
     
-    // 模型配置
-    const availableModels = ref([
-      { id: 1, name: 'GPT-4', type: '通用模型' },
-      { id: 2, name: 'Claude 3', type: '通用模型' },
-      { id: 3, name: 'LLaMA 3', type: '开源模型' },
-      { id: 4, name: 'FinBERT', type: '金融专用模型' }
-    ])
-    const selectedModel = ref(1) // 默认选择第一个模型
+    // 当前选中的数据源
+    const currentDataSourceId = ref(null)
+    
+    // 数据源配置 - 从API获取
+    const availableDataSources = ref([])
+    const selectedDataSources = ref([])
+    
+    // 模型配置 - 从API获取
+    const availableModels = ref([])
+    const selectedModel = ref(null)
+    
+    // 当前表信息
+    const currentTableName = ref('')
+    const currentTableDescription = ref('')
+    
+    // 数据源面板的相关变量
+    const activeTab = ref('schema');
+    const tableSchema = ref([]);
+    const loadingSchema = ref(false);
+    const loadingSample = ref(false);
+    
+    // 初始化函数，获取数据源和模型数据
+    const initData = async () => {
+      try {
+        // 获取模型列表
+        const modelResponse = await getModels()
+        if (modelResponse.data) {
+          // 确保结果是数组
+          availableModels.value = Array.isArray(modelResponse.data) 
+            ? modelResponse.data 
+            : modelResponse.data.data || []
+          
+          // 设置默认模型为is_default=true的模型或第一个模型
+          const defaultModel = availableModels.value.find(model => model.is_default) || availableModels.value[0]
+          if (defaultModel) {
+            selectedModel.value = defaultModel.id
+          }
+        }
+      } catch (error) {
+        console.error('获取模型列表失败:', error)
+        ElMessage.error('获取模型列表失败，请刷新页面重试')
+      }
+      
+      try {
+        // 获取数据源列表
+        const datasourceResponse = await getDatasources()
+        if (datasourceResponse.data) {
+          // 确保结果是数组
+          availableDataSources.value = Array.isArray(datasourceResponse.data) 
+            ? datasourceResponse.data 
+            : datasourceResponse.data.data || []
+          
+          // 默认选择所有connected状态的数据源
+          selectedDataSources.value = availableDataSources.value
+            .filter(ds => ds.connection_status === 'connected' || ds.status?.is_connected)
+            .map(ds => ds.id)
+          
+          // 如果没有选中的数据源，则默认选择第一个
+          if (selectedDataSources.value.length === 0 && availableDataSources.value.length > 0) {
+            selectedDataSources.value = [availableDataSources.value[0].id]
+          }
+        }
+      } catch (error) {
+        console.error('获取数据源列表失败:', error)
+        ElMessage.error('获取数据源列表失败，请刷新页面重试')
+      }
+    }
     
     // 获取选中模型名称
     const getSelectedModelName = () => {
@@ -484,114 +648,191 @@ export default {
       }
     }
     
+    // 获取数据源名称
+    const getDatasourceName = (datasourceId) => {
+      const datasource = availableDataSources.value.find(ds => ds.id === datasourceId)
+      return datasource ? datasource.name : `数据源 ${datasourceId}`
+    }
+    
+    // 数据源变更事件处理
+    const onDataSourceChange = () => {
+      if (currentDataSourceId.value) {
+        // 加载数据源元数据并自动加载第一个表
+        loadDataSourceMetadata(true)
+      }
+    }
+    
     // 处理数据源操作
     const handleDataSourceAction = (command) => {
       if (command === 'manage') {
-        showDataSourcePanel.value = true
-        // 加载数据源元数据
-        loadDataSourceMetadata()
+        router.push('/datasource/list')
       } else if (command.startsWith('select_')) {
         const sourceId = parseInt(command.split('_')[1])
         toggleDataSource(sourceId)
+      } else if (command === 'view') {
+        // 显示数据源面板
+        showDataSourcePanel.value = true
+        
+        // 确保数据源已选择
+        if (selectedDataSources.value.length > 0) {
+          currentDataSourceId.value = selectedDataSources.value[0]
+          // 加载数据源元数据
+          loadDataSourceMetadata(true) // 传递参数true表示需要自动加载第一个表
+        } else {
+          ElMessage.warning('请先选择至少一个数据源')
+        }
       }
     }
     
     // 加载数据源元数据
-    const loadDataSourceMetadata = () => {
-      // 实际项目中应该从API获取
-      // 这里使用模拟数据
-      dataSourceMetadata.value = [
-        { tableName: 'users', description: '用户表', rowCount: 1500 },
-        { tableName: 'orders', description: '订单表', rowCount: 45000 },
-        { tableName: 'products', description: '产品表', rowCount: 3200 },
-        { tableName: 'categories', description: '分类表', rowCount: 120 }
-      ]
+    const loadDataSourceMetadata = async (autoLoadFirstTable = false) => {
+      if (selectedDataSources.value.length === 0) {
+        ElMessage.warning('请先选择数据源')
+        return
+      }
       
-      availableTables.value = dataSourceMetadata.value.map(table => ({
-        name: table.tableName,
-        description: table.description
-      }))
+      // 设置当前选中的数据源
+      if (!currentDataSourceId.value) {
+        currentDataSourceId.value = selectedDataSources.value[0]
+      }
+      
+      loadingMetadata.value = true
+      try {
+        // 使用API获取选中数据源的表信息
+        const datasourceId = currentDataSourceId.value
+        const response = await getTables(datasourceId)
+        
+        // 更灵活地处理响应数据格式
+        let tablesData = null
+        
+        if (Array.isArray(response)) {
+          tablesData = response
+        } else if (response && response.data && Array.isArray(response.data)) {
+          tablesData = response.data
+        } else if (response && response.data && response.data.data && Array.isArray(response.data.data)) {
+          tablesData = response.data.data
+        } else if (response && response.success && Array.isArray(response.data)) {
+          tablesData = response.data
+        }
+        
+        if (tablesData && tablesData.length > 0) {
+          // 转换API返回数据为我们需要的格式
+          dataSourceMetadata.value = tablesData.map(table => ({
+            tableName: table.name || table.tableName || table.table_name,
+            description: table.description || table.tableDescription || table.comment || '暂无描述',
+            rowCount: table.row_count || table.rowCount || 0
+          }))
+          
+          availableTables.value = dataSourceMetadata.value.map(table => ({
+            name: table.tableName,
+            description: table.description
+          }))
+          
+          // 如果需要自动加载第一个表
+          if (autoLoadFirstTable && dataSourceMetadata.value.length > 0) {
+            const firstTable = dataSourceMetadata.value[0].tableName
+            selectedTable.value = firstTable
+            viewTableDetails(firstTable)
+          }
+        } else {
+          dataSourceMetadata.value = []
+          availableTables.value = []
+          ElMessage.info('未获取到表信息，请检查数据源配置')
+        }
+      } catch (error) {
+        dataSourceMetadata.value = []
+        availableTables.value = []
+        ElMessage.error('加载表数据失败，请确认数据源连接状态')
+      } finally {
+        loadingMetadata.value = false
+      }
     }
     
     // 查看表详情
-    const viewTableDetails = (table) => {
-      // 实际项目中应该从API获取
-      // 这里使用模拟数据
-      if (table.tableName === 'users') {
-        tableColumns.value = [
-          { columnName: 'id', dataType: 'INT', nullable: false, isPrimaryKey: true, description: '用户ID' },
-          { columnName: 'username', dataType: 'VARCHAR(50)', nullable: false, isPrimaryKey: false, description: '用户名' },
-          { columnName: 'email', dataType: 'VARCHAR(100)', nullable: false, isPrimaryKey: false, description: '电子邮箱' },
-          { columnName: 'password_hash', dataType: 'VARCHAR(128)', nullable: false, isPrimaryKey: false, description: '密码哈希' },
-          { columnName: 'created_at', dataType: 'TIMESTAMP', nullable: false, isPrimaryKey: false, description: '创建时间' },
-          { columnName: 'status', dataType: 'TINYINT', nullable: false, isPrimaryKey: false, description: '状态: 1-活跃, 0-禁用' }
-        ]
-      } else if (table.tableName === 'orders') {
-        tableColumns.value = [
-          { columnName: 'id', dataType: 'INT', nullable: false, isPrimaryKey: true, description: '订单ID' },
-          { columnName: 'user_id', dataType: 'INT', nullable: false, isPrimaryKey: false, description: '用户ID' },
-          { columnName: 'order_date', dataType: 'DATETIME', nullable: false, isPrimaryKey: false, description: '订单日期' },
-          { columnName: 'total_amount', dataType: 'DECIMAL(10,2)', nullable: false, isPrimaryKey: false, description: '总金额' },
-          { columnName: 'status', dataType: 'VARCHAR(20)', nullable: false, isPrimaryKey: false, description: '订单状态' }
-        ]
-      } else {
-        tableColumns.value = [
-          { columnName: 'id', dataType: 'INT', nullable: false, isPrimaryKey: true, description: '主键ID' },
-          { columnName: 'name', dataType: 'VARCHAR(100)', nullable: false, isPrimaryKey: false, description: '名称' },
-          { columnName: 'created_at', dataType: 'TIMESTAMP', nullable: false, isPrimaryKey: false, description: '创建时间' }
-        ]
-      }
+    const viewTableDetails = async (tableName) => {
+      if (!tableName || !currentDataSourceId.value) return;
       
-      tableDetailsVisible.value = true
-    }
-    
-    // 监听选中表变化，加载样例数据
-    watch(selectedTable, (newValue) => {
-      if (newValue) {
-        loadSampleData(newValue)
+      currentTableName.value = tableName;
+      const tableInfo = dataSourceMetadata.value.find(t => t.tableName === tableName);
+      currentTableDescription.value = tableInfo ? tableInfo.description : '';
+      
+      loadingSchema.value = true;
+      try {
+        // 加载表结构
+        const response = await getTableSchema(currentDataSourceId.value, tableName);
+        
+        // 更灵活地处理响应数据格式
+        let schemaData = null
+        
+        if (Array.isArray(response)) {
+          schemaData = response
+        } else if (response && response.data && Array.isArray(response.data)) {
+          schemaData = response.data
+        } else if (response && response.data && response.data.data && Array.isArray(response.data.data)) {
+          schemaData = response.data.data
+        } else if (response && response.success && Array.isArray(response.data)) {
+          schemaData = response.data
+        }
+        
+        if (schemaData && schemaData.length > 0) {
+          tableSchema.value = schemaData;
+          
+          // 自动加载样例数据
+          loadSampleData(tableName);
+        } else {
+          tableSchema.value = [];
+          ElMessage.info(`表${tableName}没有结构信息`);
+        }
+      } catch (error) {
+        tableSchema.value = [];
+        ElMessage.error(`获取表${tableName}结构失败: ${error.message || '未知错误'}`);
+      } finally {
+        loadingSchema.value = false;
       }
-    })
+    };
     
     // 加载样例数据
-    const loadSampleData = (tableName) => {
-      // 实际项目中应该从API获取
-      // 这里使用模拟数据
-      if (tableName === 'users') {
-        sampleData.value = [
-          { id: 1, username: 'admin', email: 'admin@example.com', status: 1, created_at: '2023-01-15 08:30:00' },
-          { id: 2, username: 'user1', email: 'user1@example.com', status: 1, created_at: '2023-02-20 10:15:00' },
-          { id: 3, username: 'user2', email: 'user2@example.com', status: 0, created_at: '2023-03-05 14:45:00' }
-        ]
-        sampleColumns.value = ['id', 'username', 'email', 'status', 'created_at']
-      } else if (tableName === 'orders') {
-        sampleData.value = [
-          { id: 1001, user_id: 1, order_date: '2023-10-15', total_amount: 1250.50, status: 'completed' },
-          { id: 1002, user_id: 2, order_date: '2023-10-16', total_amount: 850.25, status: 'processing' },
-          { id: 1003, user_id: 1, order_date: '2023-10-18', total_amount: 1450.00, status: 'completed' }
-        ]
-        sampleColumns.value = ['id', 'user_id', 'order_date', 'total_amount', 'status']
-      } else if (tableName === 'products') {
-        sampleData.value = [
-          { id: 101, name: '数据分析服务', price: 599.99, category_id: 1 },
-          { id: 102, name: '云存储套餐', price: 299.50, category_id: 2 },
-          { id: 103, name: '安全防护服务', price: 499.00, category_id: 3 }
-        ]
-        sampleColumns.value = ['id', 'name', 'price', 'category_id']
-      } else {
-        sampleData.value = [
-          { id: 1, name: '示例1', created_at: '2023-01-01' },
-          { id: 2, name: '示例2', created_at: '2023-01-02' },
-          { id: 3, name: '示例3', created_at: '2023-01-03' }
-        ]
-        sampleColumns.value = ['id', 'name', 'created_at']
+    const loadSampleData = async (tableName) => {
+      if (!tableName || !currentDataSourceId.value) return;
+      
+      loadingSample.value = true;
+      try {
+        // 获取样例数据，限制最多5条
+        const response = await querySampleData(currentDataSourceId.value, tableName, 5);
+        
+        // 更灵活地处理响应数据格式
+        let sampleDataResult = null
+        
+        if (Array.isArray(response)) {
+          sampleDataResult = response
+        } else if (response && response.data && Array.isArray(response.data)) {
+          sampleDataResult = response.data
+        } else if (response && response.data && response.data.data && Array.isArray(response.data.data)) {
+          sampleDataResult = response.data.data
+        } else if (response && response.success && Array.isArray(response.data)) {
+          sampleDataResult = response.data
+        }
+        
+        if (sampleDataResult && sampleDataResult.length > 0) {
+          sampleData.value = sampleDataResult;
+        } else {
+          sampleData.value = [];
+          // 修改为更友好的提示
+          ElMessage.info(`表${tableName}没有样例数据或该表为空表`);
+        }
+      } catch (error) {
+        sampleData.value = [];
+        ElMessage.error(`获取表${tableName}样例数据失败: ${error.message || '未知错误'}`);
+      } finally {
+        loadingSample.value = false;
       }
-    }
+    };
     
     // 会话列表和当前会话
     const sessions = ref([
       {
         id: 1,
-        title: '新建会话',
+        title: '数据库查询示例',
         createdAt: '2023-11-10T08:30:00Z',
         updatedAt: '2023-11-10T08:45:00Z',
         messageCount: 5,
@@ -599,59 +840,81 @@ export default {
           {
             id: 101,
             role: 'user',
-            content: '你好，请查询一下我们的销售数据',
+            content: '你好，可以帮我查询一下用户数据吗？',
             timestamp: '2023-11-10T08:30:00Z'
           },
           {
             id: 102,
             role: 'assistant',
-            content: '您好！我可以帮您查询销售数据。请问您需要查询哪个时间段、哪个地区或产品的销售数据呢？',
+            content: '您好！我可以帮您查询用户数据。我能看到您已连接了MySQL数据库，请问您想查询用户表中的哪些信息呢？',
             timestamp: '2023-11-10T08:30:10Z'
           },
           {
             id: 103,
             role: 'user',
-            content: '查询2023年10月的销售额',
+            content: '帮我查询活跃用户数量和注册时间分布',
             timestamp: '2023-11-10T08:31:00Z'
           },
           {
             id: 104,
             role: 'assistant',
-            content: '我已查询到2023年10月的销售数据：\n\n总销售额：¥1,258,750\n同比增长：14.5%\n\n各产品线销售情况：\n- 数据服务：¥528,300 (42%)\n- 云存储：¥356,200 (28%)\n- 安全产品：¥245,600 (19%)\n- 其他服务：¥128,650 (11%)\n\n需要我为您提供更详细的分析吗？',
+            content: '我已查询到用户数据统计信息：\n\n- 总用户数：2,845人\n- 活跃用户：1,968人 (69.2%)\n- 非活跃用户：877人 (30.8%)\n\n用户注册时间分布：\n- 2023年Q4：412人 (14.5%)\n- 2023年Q3：586人 (20.6%)\n- 2023年Q2：734人 (25.8%)\n- 2023年Q1：628人 (22.1%)\n- 2022年及以前：485人 (17.0%)\n\n需要我为您提供更详细的数据分析吗？',
             timestamp: '2023-11-10T08:31:15Z'
           },
           {
             id: 105,
             role: 'user',
-            content: '帮我分析一下销售趋势',
+            content: '可以帮我生成一个图表来展示这些数据吗？',
             timestamp: '2023-11-10T08:44:00Z'
           }
         ],
-        dataSourceIds: [1],
+        dataSourceIds: [4],
         modelId: 1,
-        sql: '',
-        queryResults: []
+        sql: 'SELECT status, COUNT(*) as count FROM users GROUP BY status;',
+        queryResults: [
+          { status: '活跃', count: 1968 },
+          { status: '非活跃', count: 877 }
+        ]
       },
       {
         id: 2,
-        title: '数据库查询示例',
+        title: '销售数据分析',
         createdAt: '2023-11-09T10:15:00Z',
         updatedAt: '2023-11-09T10:30:00Z',
         messageCount: 3,
-        messages: [],
-        dataSourceIds: [1, 2],
+        messages: [
+          {
+            id: 201,
+            role: 'user',
+            content: '帮我分析最近三个月的销售数据',
+            timestamp: '2023-11-09T10:15:00Z'
+          },
+          {
+            id: 202,
+            role: 'assistant',
+            content: '我已为您查询了最近三个月(8-10月)的销售数据：\n\n**总销售额**：¥3,765,840\n\n**月度销售情况**：\n- 10月：¥1,258,750 (同比增长14.5%)\n- 9月：¥1,324,680 (同比增长12.3%)\n- 8月：¥1,182,410 (同比增长8.7%)\n\n**产品类别销售占比**：\n- 数据服务：¥1,654,969 (44%)\n- 云存储：¥978,118 (26%)\n- 安全产品：¥715,510 (19%)\n- 其他服务：¥417,243 (11%)\n\n**销售趋势分析**：\n总体呈现增长态势，但增速略有放缓。数据服务类产品持续领先，云存储业务增长最快。\n\n需要我深入分析某个特定方面吗？',
+            timestamp: '2023-11-09T10:15:30Z'
+          },
+          {
+            id: 203,
+            role: 'user',
+            content: '数据服务类产品的销售情况如何？',
+            timestamp: '2023-11-09T10:25:00Z'
+          }
+        ],
+        dataSourceIds: [1, 5],
         modelId: 1,
         sql: '',
         queryResults: []
       },
       {
         id: 3,
-        title: '财务数据分析',
+        title: '客户分析报告',
         createdAt: '2023-11-08T14:20:00Z',
         updatedAt: '2023-11-08T15:45:00Z',
         messageCount: 8,
         messages: [],
-        dataSourceIds: [4],
+        dataSourceIds: [5],
         modelId: 4,
         sql: '',
         queryResults: []
@@ -673,6 +936,17 @@ export default {
     
     // 创建新会话
     const createNewSession = () => {
+      // 确保有可用的模型和数据源
+      if (availableModels.value.length === 0) {
+        ElMessage.warning('没有可用的模型，请先创建模型')
+        return
+      }
+      
+      if (selectedDataSources.value.length === 0) {
+        ElMessage.warning('没有选择数据源，请先选择数据源')
+        return
+      }
+      
       const newSession = {
         id: uuidv4(),
         title: `新建会话 ${sessions.value.length + 1}`,
@@ -680,7 +954,7 @@ export default {
         updatedAt: new Date().toISOString(),
         messageCount: 0,
         messages: [],
-        dataSourceIds: [selectedDataSources.value[0]],
+        dataSourceIds: [...selectedDataSources.value],
         modelId: selectedModel.value,
         sql: '',
         queryResults: []
@@ -703,16 +977,25 @@ export default {
       if (session.id === currentSession.value.id) return
       
       // 更新选中的数据源和模型
-      selectedDataSources.value = session.dataSourceIds || [1]
-      selectedModel.value = session.modelId || 1
+      selectedDataSources.value = session.dataSourceIds && session.dataSourceIds.length > 0
+        ? [...session.dataSourceIds]
+        : availableDataSources.value.length > 0 ? [availableDataSources.value[0].id] : []
+      
+      // 当所选模型不在可用模型列表中或未指定时，使用默认模型
+      const modelExists = session.modelId && availableModels.value.some(m => m.id === session.modelId)
+      selectedModel.value = modelExists 
+        ? session.modelId 
+        : availableModels.value.length > 0 
+          ? (availableModels.value.find(m => m.is_default) || availableModels.value[0]).id
+          : null
       
       // 清空当前会话状态
       currentSQL.value = session.sql || ''
       queryResult.value = session.queryResults || []
       resultColumns.value = queryResult.value.length > 0 ? Object.keys(queryResult.value[0]) : []
       hasVisualization.value = Boolean(currentSQL.value && queryResult.value.length > 0 && 
-                                     (currentSQL.value.toLowerCase().includes('count') || 
-                                      currentSQL.value.toLowerCase().includes('group by')))
+                               (currentSQL.value.toLowerCase().includes('count') || 
+                                currentSQL.value.toLowerCase().includes('group by')))
       
       // 切换会话
       currentSession.value = {...session}
@@ -966,16 +1249,42 @@ export default {
     
     // 复制消息内容
     const copyMessage = (message) => {
-      navigator.clipboard.writeText(message.content)
-        .then(() => {
-          ElMessage({
-            message: '已复制到剪贴板',
-            type: 'success'
-          })
-        })
-        .catch(() => {
-          ElMessage.error('复制失败')
-        })
+      try {
+        if (!navigator.clipboard) {
+          // 如果navigator.clipboard不可用，使用document.execCommand进行复制
+          const textArea = document.createElement('textarea');
+          textArea.value = message.content;
+          document.body.appendChild(textArea);
+          textArea.select();
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          
+          if (successful) {
+            ElMessage({
+              message: '已复制到剪贴板',
+              type: 'success'
+            });
+          } else {
+            throw new Error('复制失败');
+          }
+        } else {
+          // 使用现代的Clipboard API
+          navigator.clipboard.writeText(message.content)
+            .then(() => {
+              ElMessage({
+                message: '已复制到剪贴板',
+                type: 'success'
+              });
+            })
+            .catch((err) => {
+              console.error('复制失败:', err);
+              ElMessage.error('复制失败');
+            });
+        }
+      } catch (error) {
+        console.error('复制出错:', error);
+        ElMessage.error('复制失败');
+      }
     }
     
     // 评价消息
@@ -1278,14 +1587,22 @@ export default {
       }
     }
     
-    // 组件挂载时滚动到底部
-    onMounted(() => {
+    // 组件挂载后执行
+    onMounted(async () => {
+      // 初始化数据
+      await initData()
+      
       nextTick(() => {
         scrollToBottom()
       })
       
       // 添加窗口大小变化监听
       window.addEventListener('resize', handleResize)
+      
+      // 自动刷新数据源列表
+      setTimeout(() => {
+        refreshDatasources()
+      }, 1500)
     })
     
     // 组件卸载时清理
@@ -1303,16 +1620,42 @@ export default {
     const copySQLQuery = () => {
       if (!currentSQL.value) return
       
-      navigator.clipboard.writeText(currentSQL.value)
-        .then(() => {
-          ElMessage({
-            message: 'SQL已复制到剪贴板',
-            type: 'success'
-          })
-        })
-        .catch(() => {
-          ElMessage.error('复制失败')
-        })
+      try {
+        if (!navigator.clipboard) {
+          // 如果navigator.clipboard不可用，使用document.execCommand进行复制
+          const textArea = document.createElement('textarea');
+          textArea.value = currentSQL.value;
+          document.body.appendChild(textArea);
+          textArea.select();
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          
+          if (successful) {
+            ElMessage({
+              message: 'SQL已复制到剪贴板',
+              type: 'success'
+            });
+          } else {
+            throw new Error('复制失败');
+          }
+        } else {
+          // 使用现代的Clipboard API
+          navigator.clipboard.writeText(currentSQL.value)
+            .then(() => {
+              ElMessage({
+                message: 'SQL已复制到剪贴板',
+                type: 'success'
+              });
+            })
+            .catch((err) => {
+              console.error('复制SQL失败:', err);
+              ElMessage.error('复制失败');
+            });
+        }
+      } catch (error) {
+        console.error('复制SQL出错:', error);
+        ElMessage.error('复制失败');
+      }
     }
     
     // 执行SQL查询
@@ -1522,72 +1865,145 @@ export default {
       })
     }
     
+    // 刷新数据源列表
+    const refreshDatasources = async () => {
+      try {
+        // 移除多余的第一个提示信息
+        // 获取数据源列表
+        const datasourceResponse = await getDatasources()
+        
+        // 处理响应结果，减少冗余日志输出
+        if (datasourceResponse) {
+          // 确保结果是数组 - 后端API可能直接返回数组或嵌套在data字段中
+          if (Array.isArray(datasourceResponse)) {
+            availableDataSources.value = datasourceResponse
+          } else if (datasourceResponse.data && Array.isArray(datasourceResponse.data)) {
+            availableDataSources.value = datasourceResponse.data
+          } else if (datasourceResponse.data && datasourceResponse.data.data && Array.isArray(datasourceResponse.data.data)) {
+            availableDataSources.value = datasourceResponse.data.data
+          } else {
+            // 兜底处理，创建一个空数组
+            availableDataSources.value = []
+          }
+          
+          // 更新已选中的数据源，保留原有选择
+          const previouslySelected = [...selectedDataSources.value]
+          selectedDataSources.value = previouslySelected.filter(id => 
+            availableDataSources.value.some(ds => ds.id === id)
+          )
+          
+          ElMessage.success('数据源列表已刷新')
+        } else {
+          ElMessage.error('获取数据源列表失败')
+        }
+      } catch (error) {
+        ElMessage.error('刷新数据源列表失败')
+      }
+    }
+    
+    // 监听选中表变化，加载样例数据
+    watch(selectedTable, (newValue) => {
+      if (newValue) {
+        loadSampleData(newValue)
+      }
+    })
+    
     return {
-      // 状态
-      searchKeyword,
-      messageInput,
-      isTyping,
-      renameDialogVisible,
-      newSessionTitle,
-      showDataSourcePanel,
-      messageContainer,
-      
-      // 数据
+      // 会话相关
       sessions,
-      filteredSessions,
       currentSession,
-      availableDataSources,
-      selectedDataSources,
-      availableModels,
-      selectedModel,
-      
-      // 方法
+      searchKeyword,
+      filteredSessions,
       createNewSession,
       switchSession,
+      handleSessionAction,
+      
+      // 消息相关
+      messageInput,
+      isTyping,
       sendMessage,
+      formatMessage,
+      messageContainer,
       copyMessage,
       rateMessage,
-      clearMessages,
-      handleSessionAction,
-      confirmRename,
-      confirmDataSources,
-      confirmModel,
-      uploadFile,
-      toggleVoiceInput,
       
-      // 工具函数
+      // 时间格式化
       formatDate,
       formatTime,
-      formatMessage,
-      scrollToBottom,
       
-      // 图标组件
-      
-      // 新功能相关
+      // 图表相关
       chartContainer,
+      currentChartType,
       hasVisualization,
+      changeChartType,
+      
+      // SQL相关
       currentSQL,
-      queryResult,
-      resultColumns,
       copySQLQuery,
       executeSQL,
-      exportResults,
-      changeChartType,
-      exportChart,
+      
+      // 结果相关
+      queryResult,
+      resultColumns,
+      
+      // 数据源相关
+      availableDataSources,
+      selectedDataSources,
+      toggleDataSource,
+      handleDataSourceAction,
+      getDatasourceName,
+      onDataSourceChange,
+      currentDataSourceId,
+      
+      // 模型相关
+      availableModels,
+      selectedModel,
       getSelectedModelName,
       handleModelSwitch,
-      handleDataSourceAction,
-      toggleDataSource,
       
-      // 数据源管理相关
+      // 数据源面板
+      showDataSourcePanel,
       dataSourceMetadata,
       availableTables,
       selectedTable,
       sampleData,
       sampleColumns,
+      loadDataSourceMetadata,
+      viewTableDetails,
+      
+      // 表详情相关
       tableDetailsVisible,
-      tableColumns,
-      viewTableDetails
+      currentTableName,
+      currentTableDescription,
+      tableSchema,
+      
+      // 标签相关
+      activeTab,
+      
+      // 加载状态
+      loadingMetadata,
+      loadingSampleData,
+      loadingTableDetails,
+      loadingSchema,
+      loadingSample,
+      loadSampleData,
+      
+      // 会话重命名相关
+      renameDialogVisible,
+      newSessionTitle,
+      sessionToRename,
+      confirmRename,
+      
+      // 扩展功能
+      uploadFile,
+      toggleVoiceInput,
+      
+      // 刷新数据源方法
+      refreshDatasources,
+      
+      // 导出功能
+      exportResults,
+      exportChart
     }
   }
 }
@@ -1924,10 +2340,57 @@ export default {
   color: #909399;
 }
 
+.drawer-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0 10px;
+}
+
+.data-source-selector {
+  margin: 15px 0;
+  display: flex;
+  align-items: center;
+}
+
+.selector-label {
+  margin-right: 10px;
+  font-weight: bold;
+}
+
+.table-selector {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.sample-data-container {
+  margin-top: 15px;
+}
+
 .drawer-footer {
+  margin-top: 20px;
   display: flex;
   justify-content: flex-end;
   padding: 15px 0;
+  border-top: 1px solid #ebeef5;
+}
+
+.table-detail-header {
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.table-name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.table-description {
+  color: #606266;
+  font-size: 14px;
 }
 
 .is-active {
@@ -1956,4 +2419,88 @@ export default {
     max-width: 85%;
   }
 }
+
+.datasource-panel {
+  padding: 0 10px;
+  
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    
+    h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+  }
+  
+  .table-list {
+    margin-bottom: 20px;
+    
+    .table-list-content {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+  }
+  
+  .table-details {
+    margin-top: 10px;
+    
+    .table-name-header {
+      margin-bottom: 15px;
+      
+      h4 {
+        margin: 0 0 5px 0;
+        font-size: 16px;
+      }
+      
+      p {
+        margin: 0;
+        color: #606266;
+        font-size: 13px;
+      }
+    }
+  }
+  
+  .el-table {
+    .is-active {
+      background-color: #f0f9eb;
+    }
+  }
+}
+
+/* 数据源下拉菜单 */
+.datasource-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 5px;
+}
+
+.datasource-dropdown-header span {
+  font-weight: bold;
+  color: #606266;
+  font-size: 14px;
+}
+
+.el-dropdown-menu .el-dropdown-item:has(.el-checkbox) {
+  padding: 5px 20px;
+}
+
+.el-dropdown-menu .el-checkbox {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.el-dropdown-menu .el-checkbox .el-tag {
+  margin-left: 8px;
+}
+
+/* 其他样式 */
 </style> 

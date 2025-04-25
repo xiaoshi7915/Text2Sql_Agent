@@ -2,10 +2,10 @@ import {
   House, List, Plus, DataLine, Monitor, ChatDotRound, 
   ArrowDown, ArrowRight, Cpu, DataAnalysis, Timer, 
   Setting, QuestionFilled, Delete, Search, Edit, 
-  Connection, DocumentCopy, ThumbUp, ThumbDown, 
+  Connection, DocumentCopy, Goods, GoodsFilled, 
   ChatSquare, Upload, Microphone, Position, More, 
   User, Switch, Open, VideoPlay, Download, Picture, 
-  Clock
+  Clock, Refresh, NewIcon
 } from '@element-plus/icons-vue'
 
 // 自定义图标组件映射
@@ -28,8 +28,8 @@ export const iconMap = {
   'icon-edit': Edit,
   'icon-connection': Connection,
   'icon-document-copy': DocumentCopy,
-  'icon-thumb-up': ThumbUp,
-  'icon-thumb-down': ThumbDown,
+  'icon-thumb-up': Goods,
+  'icon-thumb-down': GoodsFilled,
   'icon-chat-square': ChatSquare,
   'icon-upload': Upload,
   'icon-microphone': Microphone,
@@ -41,7 +41,9 @@ export const iconMap = {
   'icon-video-play': VideoPlay,
   'icon-download': Download,
   'icon-picture': Picture,
-  'icon-time': Clock
+  'icon-time': Clock,
+  'icon-refresh': Refresh,
+  'icon-new-name': NewIcon
 }
 
 // 注册所有图标

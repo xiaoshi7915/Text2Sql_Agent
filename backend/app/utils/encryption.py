@@ -60,7 +60,11 @@ def decrypt_password(encrypted_password):
             return cipher_suite.decrypt(encrypted_password.encode()).decode()
         except Exception as e:
             logger.error(f"备用密钥解密失败: {e}")
-            return ''
+            # 对于无法解密的情况，返回数据库默认密码
+            logger.warning("解密失败，返回配置的默认密码")
+            return os.getenv('DB_PASSWORD', 'admin123456!')
     except Exception as e:
         logger.error(f"密码解密失败: {e}")
-        return '' 
+        # 对于一般解密失败，返回默认密码
+        logger.warning("解密失败，返回配置的默认密码")
+        return os.getenv('DB_PASSWORD', 'admin123456!') 

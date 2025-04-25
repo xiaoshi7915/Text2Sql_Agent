@@ -9,9 +9,9 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from config import Config
 # 从app模块直接导入db
-from app import db
-# 改为导入单一的API蓝图
-from api import api_bp
+from app import db, create_app as app_create_app
+# 不再直接导入api_bp，改为使用app.api中的蓝图
+# from api import api_bp
 
 # 改为使用绝对导入
 import config as app_config
@@ -25,9 +25,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 migrate = Migrate()
 jwt = JWTManager()
 
-def create_app(config_class=Config):
+# 使用app包中的create_app函数，确保一致性
+create_app = app_create_app
+
+# 保留备用的create_app函数，但不使用它
+def legacy_create_app(config_class=Config):
     """
-    应用工厂函数
+    旧的应用工厂函数 - 不再使用，仅保留为参考
+    现在统一使用app/__init__.py中的create_app函数
     
     参数:
         config_class: 配置类，默认为Config
@@ -50,8 +55,8 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
     jwt.init_app(app)
     
-    # 注册蓝图
-    app.register_blueprint(api_bp)
+    # 注册蓝图 - 现在使用app.api中的蓝图，不再使用api_bp
+    # app.register_blueprint(api_bp)
     
     # 全局错误处理
     @app.errorhandler(404)
@@ -70,5 +75,5 @@ def create_app(config_class=Config):
 
 if __name__ == '__main__':
     app = create_app()
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 5001))
     app.run(debug=True, host='0.0.0.0', port=port) 
