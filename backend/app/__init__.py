@@ -4,6 +4,7 @@ Flask应用初始化文件
 
 import os
 import sys
+import logging
 from flask import Flask
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -17,6 +18,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+
+# 配置日志
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 def create_app():
     """创建并配置Flask应用"""
@@ -39,11 +46,12 @@ def create_app():
     jwt.init_app(app)
     
     # 注册蓝图
-    try:
-        from api import api_bp
-        app.register_blueprint(api_bp, url_prefix='/api')
-    except ImportError as e:
-        print(f"无法导入API蓝图: {e}")
+    from .api import datasources_bp
+    app.register_blueprint(datasources_bp)
+    
+    # 注册兼容性蓝图 (处理旧路径请求)
+    from .api import datasource_compat_bp
+    app.register_blueprint(datasource_compat_bp)
     
     # 创建所有表
     with app.app_context():

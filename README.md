@@ -1,4 +1,116 @@
-# 问数智能体项目
+# 问数智能体系统
+
+## 项目概述
+
+问数智能体系统是一个基于Flask和Vue.js的全栈应用程序，旨在提供数据源管理和智能交互功能。
+
+## 系统架构
+
+### 后端（Flask）
+
+后端采用模块化设计，主要分为以下几层：
+
+1. **API层**：处理HTTP请求和响应
+   - `/backend/api/` - 外部API接口
+   - `/backend/app/api/` - 内部API实现
+
+2. **服务层**：实现业务逻辑
+   - `/backend/app/services/` - 封装核心业务逻辑
+
+3. **模型层**：定义数据模型
+   - `/backend/app/models/` - 数据库模型定义
+
+4. **工具层**：提供通用功能
+   - `/backend/app/utils/` - 工具类和辅助函数
+
+### 前端（Vue.js）
+
+前端使用Vue.js框架，采用组件化设计：
+
+1. **视图**：用户界面
+   - `/frontend/src/views/` - 页面视图组件
+
+2. **组件**：可复用UI元素
+   - `/frontend/src/components/` - 组件定义
+
+3. **状态管理**：
+   - `/frontend/src/store/` - Pinia状态管理
+
+4. **API调用**：
+   - `/frontend/src/api/` - 后端API调用
+
+## 数据源管理模块
+
+### 模块功能
+
+数据源管理模块允许用户：
+- 创建、编辑、删除和查看数据源
+- 测试数据源连接
+- 查看数据源中的表数量和连接状态
+
+### 技术亮点
+
+1. **模块化设计**：
+   - 使用策略模式处理不同类型的数据库连接
+   - 服务层封装业务逻辑，与API层分离
+
+2. **数据库支持**：
+   - MySQL
+   - PostgreSQL
+   - SQL Server
+   - Oracle
+   - KingbaseES (PostgreSQL兼容)
+
+3. **安全特性**：
+   - 密码加密存储
+   - 敏感信息保护
+
+## 启动项目
+
+### 后端
+
+```bash
+cd backend
+python run.py
+```
+
+### 前端
+
+```bash
+cd frontend
+npm run serve
+```
+
+## 项目结构
+
+```
+wenshu-mcp/
+├── backend/                   # 后端代码
+│   ├── api/                   # 外部API定义
+│   ├── app/                   # 应用核心代码
+│   │   ├── api/               # 内部API实现
+│   │   ├── models/            # 数据模型
+│   │   ├── services/          # 业务服务
+│   │   └── utils/             # 工具函数
+│   ├── migrations/            # 数据库迁移
+│   ├── app.py                 # 应用入口
+│   ├── config.py              # 配置文件
+│   └── run.py                 # 运行脚本
+├── frontend/                  # 前端代码
+│   ├── public/                # 静态资源
+│   ├── src/                   # 源代码
+│   │   ├── api/               # API调用
+│   │   ├── assets/            # 资源文件
+│   │   ├── components/        # 组件
+│   │   ├── router/            # 路由
+│   │   ├── store/             # 状态管理
+│   │   ├── views/             # 视图
+│   │   ├── App.vue            # 主组件
+│   │   └── main.js            # 入口文件
+│   ├── package.json           # 依赖配置
+│   └── vue.config.js          # Vue配置
+└── README.md                  # 项目文档
+```
 
 ## 项目介绍
 
@@ -40,7 +152,7 @@ cd wenshu-mcp
 ```
 
 系统将自动构建并启动所有服务，包括前端、后端和数据库。启动完成后，可通过以下地址访问：
-- 前端界面：http://localhost
+- 前端界面：http://localhost:8087
 - 后端API：http://localhost:5000/api
 - 默认管理员账号：admin 密码：admin123
 

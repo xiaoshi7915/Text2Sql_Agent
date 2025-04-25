@@ -6,6 +6,7 @@ class DataSource(db.Model):
     """数据源模型，用于存储连接各类数据库的配置信息"""
     
     __tablename__ = 'datasources'
+    __table_args__ = {'extend_existing': True}
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False, comment='数据源名称')
@@ -20,6 +21,8 @@ class DataSource(db.Model):
     include_views = db.Column(db.Boolean, default=False, comment='是否包含视图')
     format = db.Column(db.String(50), default='public', comment='模式名称')
     selected_fields = db.Column(db.Text, nullable=True, comment='选择字段')
+    table_count = db.Column(db.Integer, default=0, comment='表数量')
+    connection_status = db.Column(db.String(20), default='disconnected', comment='连接状态')
     created_at = db.Column(db.DateTime, default=datetime.now, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
     
@@ -42,8 +45,14 @@ class DataSource(db.Model):
             'username': self.username,
             'include_views': self.include_views,
             'format': self.format,
+            'table_count': self.table_count,
+            'connection_status': self.connection_status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'status': {
+                'is_connected': self.connection_status == 'connected',
+                'last_checked': self.updated_at.isoformat() if self.updated_at else None
+            }
         }
     
     # 敏感信息不应在to_dict中返回密码
@@ -69,5 +78,6 @@ conversation_datasources = db.Table(
     'conversation_datasources',
     db.Column('conversation_id', db.Integer, db.ForeignKey('conversations.id'), primary_key=True),
     db.Column('datasource_id', db.Integer, db.ForeignKey('datasources.id'), primary_key=True),
-    db.Column('created_at', db.DateTime, default=datetime.now)
+    db.Column('created_at', db.DateTime, default=datetime.now),
+    extend_existing=True
 ) 

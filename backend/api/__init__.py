@@ -3,10 +3,15 @@ API蓝图模块
 包含所有API路由和视图函数
 """
 
-from flask import Blueprint
+from flask import Blueprint, jsonify
 
 # 创建API蓝图
 api_bp = Blueprint('api', __name__)
+
+# 添加一个简单的测试路由
+@api_bp.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({"message": "pong", "status": "success"}), 200
 
 # 在最后导入视图模块，避免循环导入问题
 from . import auth  # 先导入auth模块

@@ -49,11 +49,19 @@ export const useDatasourceStore = defineStore('datasource', {
       this.error = null
       
       try {
+        console.log('开始获取数据源列表...')
         const res = await getDatasources()
-        this.datasources = res.data || []
+        console.log('获取数据源成功:', res)
+        this.datasources = Array.isArray(res) ? res : (res.data || [])
       } catch (error) {
-        this.error = error.message || '获取数据源列表失败'
         console.error('获取数据源列表失败:', error)
+        this.error = error.message || '获取数据源列表失败'
+        
+        // 打印更多错误详情
+        if (error.response) {
+          console.error('错误响应状态:', error.response.status)
+          console.error('错误响应数据:', error.response.data)
+        }
       } finally {
         this.loading = false
       }
@@ -154,11 +162,17 @@ export const useDatasourceStore = defineStore('datasource', {
       
       try {
         const res = await testDatasourceConnection(data)
-        return res
+        return res.data || res
       } catch (error) {
-        this.error = error.message || '测试连接失败'
-        console.error('测试连接失败:', error)
-        throw error
+        // 检查是否有返回的详细错误信息
+        if (error.response && error.response.data) {
+          // 如果后端返回了错误详情，直接传递给UI
+          this.error = error.response.data.error || error.message || '测试连接失败'
+          throw error.response.data
+        } else {
+          this.error = error.message || '测试连接失败'
+          throw error
+        }
       } finally {
         this.loading = false
       }

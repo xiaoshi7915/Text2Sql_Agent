@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 
 // 创建axios实例
 const service = axios.create({
-  baseURL: process.env.VUE_APP_BASE_API || '/api', // API基础URL
+  baseURL: '/api', // 直接使用相对路径，不再依赖环境变量
   timeout: 30000, // 请求超时时间（毫秒）
   withCredentials: true, // 跨域请求时发送cookies
   headers: {
@@ -15,6 +15,7 @@ const service = axios.create({
 service.interceptors.request.use(
   config => {
     // 在发送请求前的处理
+    console.log('请求URL:', config.baseURL + config.url)
     
     // 添加token到请求头（如果存在）
     const token = localStorage.getItem('token')

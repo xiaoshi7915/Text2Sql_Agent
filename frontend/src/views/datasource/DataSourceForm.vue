@@ -108,9 +108,10 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useDatasourceStore } from '@/store/datasource'
 
 export default {
   name: 'DataSourceForm',
@@ -126,6 +127,9 @@ export default {
     // 路由相关
     const route = useRoute()
     const router = useRouter()
+    
+    // 使用数据源Store
+    const datasourceStore = useDatasourceStore()
     
     // 表单引用
     const formRef = ref(null)
@@ -210,9 +214,9 @@ export default {
     }
     
     // 监听数据库类型变化
-    const watchDbTypeChange = () => {
-      setDefaultPort(form.type)
-    }
+    watch(() => form.type, (newType) => {
+      setDefaultPort(newType)
+    })
     
     // 获取数据源详情
     const fetchDataSource = async () => {
@@ -221,42 +225,24 @@ export default {
       loading.value = true
       
       try {
-        // 模拟API调用
-        setTimeout(() => {
-          // 实际项目中应该调用API获取数据
-          // const response = await api.getDataSourceById(currentId.value)
-          // const data = response.data
-          
-          // 模拟数据
-          const data = {
-            id: currentId.value,
-            name: '生产环境MySQL数据库',
-            type: 'MySQL',
-            description: '这是生产环境的主MySQL数据库，包含核心业务数据',
-            host: '192.168.1.100',
-            port: 3306,
-            database: 'production_db',
-            username: 'root',
-            password: '',  // 出于安全考虑，通常不会返回密码
-            timeout: 30,
-            poolSize: 10,
-            charset: 'utf8',
-            metadataRefresh: 'daily',
-            useSSL: true
-          }
-          
+        // 调用API获取数据源详情
+        const data = await datasourceStore.fetchDatasource(currentId.value)
+        
+        if (data) {
           // 更新表单数据
           Object.keys(form).forEach(key => {
-            if (data[key] !== undefined) {
+            // 适配后端字段名与前端字段名的差异
+            if (key === 'type' && data['ds_type'] !== undefined) {
+              form[key] = data['ds_type']
+            } else if (data[key] !== undefined) {
               form[key] = data[key]
             }
           })
-          
-          loading.value = false
-        }, 500)
+        }
       } catch (error) {
         console.error('获取数据源详情失败', error)
-        ElMessage.error('获取数据源详情失败')
+        ElMessage.error(`获取数据源详情失败: ${error.message}`)
+      } finally {
         loading.value = false
       }
     }
@@ -273,28 +259,44 @@ export default {
         loading.value = true
         
         try {
-          // 模拟API调用
-          setTimeout(() => {
-            // 实际项目中应该调用API保存数据
-            // if (isEdit.value) {
-            //   await api.updateDataSource(currentId.value, form)
-            // } else {
-            //   await api.createDataSource(form)
-            // }
-            
-            loading.value = false
-            
-            ElMessage({
-              message: isEdit.value ? '数据源更新成功' : '数据源创建成功',
-              type: 'success'
-            })
-            
-            // 跳转到列表页
-            router.push('/datasource/list')
-          }, 1000)
+          // 准备提交的数据
+          const submitData = {
+            name: form.name,
+            ds_type: form.type, // 适配后端字段名
+            description: form.description,
+            host: form.host,
+            port: form.port,
+            database: form.database,
+            username: form.username,
+            password: form.password,
+            options: {
+              timeout: form.timeout,
+              poolSize: form.poolSize,
+              charset: form.charset,
+              metadataRefresh: form.metadataRefresh,
+              useSSL: form.useSSL
+            }
+          }
+          
+          // 调用API保存数据
+          let result
+          if (isEdit.value) {
+            result = await datasourceStore.editDatasource(currentId.value, submitData)
+          } else {
+            result = await datasourceStore.addDatasource(submitData)
+          }
+          
+          ElMessage({
+            message: isEdit.value ? '数据源更新成功' : '数据源创建成功',
+            type: 'success'
+          })
+          
+          // 跳转到列表页
+          router.push('/datasource/list')
         } catch (error) {
           console.error('保存数据源失败', error)
-          ElMessage.error('保存数据源失败')
+          ElMessage.error(`保存数据源失败: ${error.message}`)
+        } finally {
           loading.value = false
         }
       })
@@ -312,31 +314,96 @@ export default {
         loading.value = true
         
         try {
-          // 模拟API调用
-          setTimeout(() => {
-            // 实际项目中应该调用API测试连接
-            // await api.testDataSourceConnection(form)
+          // 准备提交的测试数据
+          const testData = {
+            ds_type: form.type,
+            host: form.host,
+            port: form.port,
+            database: form.database,
+            username: form.username,
+            password: form.password
+          }
+          
+          // 如果是编辑模式，添加ID
+          if (isEdit.value) {
+            testData.id = currentId.value
+          }
+          
+          // 调用API测试连接
+          const result = await datasourceStore.testConnection(testData)
+          
+          if (result.success) {
+            // 显示表数量
+            const tableCount = result.tables || 0
             
-            loading.value = false
+            ElMessage({
+              message: `数据库连接成功，发现 ${tableCount} 个表`,
+              type: 'success'
+            })
             
-            // 随机模拟成功或失败
-            const isSuccess = Math.random() > 0.3
+            // 如果是编辑模式，刷新数据源信息
+            if (isEdit.value) {
+              await fetchDataSource()
+            }
+          } else {
+            // 显示详细错误信息
+            const errorMsg = result.error || '未知错误'
+            const solution = result.details?.possible_solution
+              ? `\n可能的解决方案: ${result.details.possible_solution}`
+              : ''
             
-            if (isSuccess) {
+            ElMessage({
+              dangerouslyUseHTMLString: true,
+              message: `<strong>连接失败</strong><br>${errorMsg}${solution ? `<br><br><em>${solution}</em>` : ''}`,
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            })
+            
+            // 如果错误类型是认证插件错误，提示使用修复工具
+            if (result.details?.error_type === 'auth_plugin_error') {
               ElMessage({
-                message: '数据库连接成功',
-                type: 'success'
-              })
-            } else {
-              ElMessage({
-                message: '数据库连接失败，请检查配置',
-                type: 'error'
+                dangerouslyUseHTMLString: true,
+                message: `<strong>MySQL 8.0+ 认证问题</strong><br>请使用 <code>python backend/fix_mysql_connection.py</code> 修复认证插件或启用SSL连接`,
+                type: 'warning',
+                duration: 7000,
+                showClose: true
               })
             }
-          }, 1500)
+            
+            // 如果是编辑模式，刷新数据源信息以更新状态
+            if (isEdit.value) {
+              await fetchDataSource()
+            }
+          }
         } catch (error) {
           console.error('测试连接失败', error)
-          ElMessage.error('测试连接失败')
+          
+          // 尝试从错误响应中获取详细信息
+          let errorMsg = '测试连接失败'
+          let solution = ''
+          
+          if (error.response && error.response.data) {
+            const responseData = error.response.data
+            errorMsg = responseData.error || errorMsg
+            solution = responseData.details?.possible_solution || ''
+          } else {
+            errorMsg = error.message || errorMsg
+          }
+          
+          ElMessage({
+            dangerouslyUseHTMLString: true,
+            message: `<strong>连接失败</strong><br>${errorMsg}${solution ? `<br><br><em>${solution}</em>` : ''}`,
+            type: 'error',
+            duration: 5000,
+            showClose: true
+          })
+          
+          // 如果是编辑模式，刷新数据源信息以更新状态
+          if (isEdit.value) {
+            await fetchDataSource()
+          }
+        } finally {
           loading.value = false
         }
       })
@@ -362,8 +429,7 @@ export default {
       showAdvanced,
       handleSubmit,
       handleTest,
-      handleCancel,
-      watchDbTypeChange
+      handleCancel
     }
   }
 }

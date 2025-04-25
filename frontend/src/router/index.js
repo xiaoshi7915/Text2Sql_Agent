@@ -27,9 +27,9 @@ const routes = [
     ]
   },
   {
-    path: '/datasource',
+    path: '/datasources',
     component: Layout,
-    redirect: '/datasource/list',
+    redirect: '/datasources/list',
     meta: { title: '数据源管理', icon: 'DataLine', requiresAuth: true },
     children: [
       {
@@ -104,6 +104,20 @@ const routes = [
     name: 'NotFound',
     component: NotFound,
     hidden: true
+  },
+  // 添加重定向，将旧路径重定向到新路径
+  {
+    path: '/datasource',
+    redirect: '/datasources'
+  },
+  {
+    path: '/datasource/:pathMatch(.*)*',
+    redirect: to => {
+      // 将/datasource/xxx重定向到/datasources/xxx
+      const path = to.path.replace('/datasource', '/datasources')
+      console.log('重定向:', to.path, '->', path)
+      return path
+    }
   }
 ]
 
@@ -113,8 +127,9 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
+// 全局导航守卫 - 记录导航过程
 router.beforeEach((to, from, next) => {
+  console.log('路由导航开始:', from.path, '->', to.path)
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - 问数智能体` : '问数智能体'
   
@@ -126,6 +141,7 @@ router.beforeEach((to, from, next) => {
     // 路由需要验证，检查是否已登录
     if (!token) {
       // 未登录，重定向到登录页面
+      console.log('需要身份验证，重定向到登录页')
       next({
         path: '/login',
         // 保存我们所在的位置，以便以后再来
@@ -140,12 +156,18 @@ router.beforeEach((to, from, next) => {
     
     // 如果已登录且要前往登录页，则重定向到首页
     if (token && to.path === '/login') {
+      console.log('已登录，从登录页重定向到首页')
       next({ path: '/' })
     } else {
       // 正常跳转
       next()
     }
   }
+})
+
+// 全局后置钩子
+router.afterEach((to, from) => {
+  console.log('路由导航完成:', to.path)
 })
 
 export default router 

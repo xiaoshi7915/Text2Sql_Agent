@@ -1,6 +1,9 @@
 # 构建阶段
 FROM node:16-alpine
 
+# 设置npm使用淘宝镜像源
+RUN npm config set registry https://registry.npmmirror.com
+
 WORKDIR /app
 
 # 复制依赖文件

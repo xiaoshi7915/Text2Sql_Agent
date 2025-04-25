@@ -2,7 +2,7 @@ import { get, post, put, del } from './request'
 
 // 获取所有数据源列表
 export function getDatasources() {
-  return get('/datasources/')
+  return get('/datasources/list')
 }
 
 // 获取单个数据源详情

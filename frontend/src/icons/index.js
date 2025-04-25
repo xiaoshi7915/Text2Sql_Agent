@@ -4,7 +4,8 @@ import {
   Setting, QuestionFilled, Delete, Search, Edit, 
   Connection, DocumentCopy, ThumbUp, ThumbDown, 
   ChatSquare, Upload, Microphone, Position, More, 
-  User, Switch, Open, VideoPlay, Download, Picture
+  User, Switch, Open, VideoPlay, Download, Picture, 
+  Clock
 } from '@element-plus/icons-vue'
 
 // 自定义图标组件映射
@@ -39,7 +40,8 @@ export const iconMap = {
   'icon-open': Open,
   'icon-video-play': VideoPlay,
   'icon-download': Download,
-  'icon-picture': Picture
+  'icon-picture': Picture,
+  'icon-time': Clock
 }
 
 // 注册所有图标
