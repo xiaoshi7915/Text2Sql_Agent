@@ -41,6 +41,9 @@ def redirect_test_connection():
     """将旧路径重定向到新路径"""
     return redirect('/api/datasources/test-connection', code=307)  # 307保留POST请求
 
+# 创建模型蓝图
+from .models import model_bp
+
 # 不要重复导入同样的功能
 # 移除冗余文件引用
 # 注释掉重复的导入，解决表重复定义问题

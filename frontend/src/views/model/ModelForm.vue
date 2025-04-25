@@ -22,14 +22,14 @@
           <el-input v-model="form.name" placeholder="请输入模型名称" />
         </el-form-item>
         
-        <el-form-item label="模型类型" prop="type">
-          <el-select v-model="form.type" placeholder="请选择模型类型" style="width: 100%" @change="handleTypeChange">
+        <el-form-item label="模型类型" prop="model_type">
+          <el-select v-model="form.model_type" placeholder="请选择模型类型" style="width: 100%" @change="handleTypeChange">
             <el-option v-for="item in modelTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         
-        <el-form-item label="模型版本" prop="version">
-          <el-input v-model="form.version" placeholder="请输入模型版本，例如: 1.0.0" />
+        <el-form-item label="模型版本" prop="api_version">
+          <el-input v-model="form.api_version" placeholder="请输入模型版本，例如: 1.0.0" />
         </el-form-item>
         
         <el-form-item label="描述">
@@ -39,19 +39,23 @@
         <!-- 连接信息部分 -->
         <h4 class="form-section-title">连接信息</h4>
         
-        <el-form-item label="API端点" prop="endpoint">
-          <el-input v-model="form.endpoint" placeholder="请输入API端点，例如: https://api.example.com/v1/models" />
+        <el-form-item label="提供商" prop="provider">
+          <el-input v-model="form.provider" placeholder="请输入模型提供商，例如: OpenAI, DeepSeek" />
         </el-form-item>
         
-        <el-form-item label="API密钥" prop="apiKey">
-          <el-input v-model="form.apiKey" type="password" placeholder="请输入API密钥" show-password />
+        <el-form-item label="API端点" prop="api_base">
+          <el-input v-model="form.api_base" placeholder="请输入API端点，例如: https://api.example.com/v1/models" />
+        </el-form-item>
+        
+        <el-form-item label="API密钥" prop="api_key">
+          <el-input v-model="form.api_key" type="password" placeholder="请输入API密钥" show-password />
         </el-form-item>
         
         <el-form-item label="状态">
           <el-switch
-            v-model="form.status"
-            :active-value="'active'"
-            :inactive-value="'offline'"
+            v-model="form.is_active"
+            :active-value="true"
+            :inactive-value="false"
             active-text="活跃"
             inactive-text="离线"
           />
@@ -60,7 +64,7 @@
         <!-- 模型参数部分 -->
         <h4 class="form-section-title">模型参数</h4>
         
-        <template v-if="form.type === 'LLM'">
+        <template v-if="form.model_type === 'LLM'">
           <el-form-item label="温度" prop="parameters.temperature">
             <el-slider
               v-model="form.parameters.temperature"
@@ -73,13 +77,13 @@
             />
           </el-form-item>
           
-          <el-form-item label="最大Token数" prop="parameters.maxTokens">
-            <el-input-number v-model="form.parameters.maxTokens" :min="1" :max="32000" style="width: 100%" />
+          <el-form-item label="最大Token数" prop="parameters.max_tokens">
+            <el-input-number v-model="form.parameters.max_tokens" :min="1" :max="32000" style="width: 100%" />
           </el-form-item>
           
-          <el-form-item label="Top P" prop="parameters.topP">
+          <el-form-item label="Top P" prop="parameters.top_p">
             <el-slider
-              v-model="form.parameters.topP"
+              v-model="form.parameters.top_p"
               :min="0"
               :max="1"
               :step="0.05"
@@ -90,9 +94,9 @@
           </el-form-item>
         </template>
         
-        <template v-else-if="form.type === 'Extractor'">
-          <el-form-item label="批处理大小" prop="parameters.batchSize">
-            <el-input-number v-model="form.parameters.batchSize" :min="1" :max="1000" style="width: 100%" />
+        <template v-else-if="form.model_type === 'Extractor'">
+          <el-form-item label="批处理大小" prop="parameters.batch_size">
+            <el-input-number v-model="form.parameters.batch_size" :min="1" :max="1000" style="width: 100%" />
           </el-form-item>
           
           <el-form-item label="超时(毫秒)" prop="parameters.timeout">
@@ -100,9 +104,9 @@
           </el-form-item>
         </template>
         
-        <template v-else-if="form.type === 'Optimizer'">
-          <el-form-item label="优化级别" prop="parameters.optimizationLevel">
-            <el-radio-group v-model="form.parameters.optimizationLevel">
+        <template v-else-if="form.model_type === 'Optimizer'">
+          <el-form-item label="优化级别" prop="parameters.optimization_level">
+            <el-radio-group v-model="form.parameters.optimization_level">
               <el-radio value="low">低 (速度优先)</el-radio>
               <el-radio value="medium">中 (平衡)</el-radio>
               <el-radio value="high">高 (质量优先)</el-radio>
@@ -110,7 +114,7 @@
           </el-form-item>
           
           <el-form-item label="启用缓存">
-            <el-switch v-model="form.parameters.enableCache" />
+            <el-switch v-model="form.parameters.enable_cache" />
           </el-form-item>
         </template>
         
@@ -125,23 +129,23 @@
         
         <div v-if="showAdvanced">
           <el-form-item label="并发请求数">
-            <el-input-number v-model="form.concurrentRequests" :min="1" :max="50" style="width: 100%" />
+            <el-input-number v-model="form.concurrent_requests" :min="1" :max="50" style="width: 100%" />
           </el-form-item>
           
           <el-form-item label="重试策略">
-            <el-select v-model="form.retryStrategy" placeholder="请选择重试策略" style="width: 100%">
+            <el-select v-model="form.retry_strategy" placeholder="请选择重试策略" style="width: 100%">
               <el-option label="无重试" value="none" />
               <el-option label="固定延迟" value="fixed" />
               <el-option label="指数退避" value="exponential" />
             </el-select>
           </el-form-item>
           
-          <el-form-item label="最大重试次数" v-if="form.retryStrategy !== 'none'">
-            <el-input-number v-model="form.maxRetries" :min="1" :max="10" style="width: 100%" />
+          <el-form-item label="最大重试次数" v-if="form.retry_strategy !== 'none'">
+            <el-input-number v-model="form.max_retries" :min="1" :max="10" style="width: 100%" />
           </el-form-item>
           
           <el-form-item label="请求超时(秒)">
-            <el-input-number v-model="form.requestTimeout" :min="1" :max="300" style="width: 100%" />
+            <el-input-number v-model="form.request_timeout" :min="1" :max="300" style="width: 100%" />
           </el-form-item>
         </div>
         
@@ -157,9 +161,11 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+// 导入API函数
+import { getModel, createModel, updateModel, testModelConnection } from '@/api/model'
 
 export default {
   name: 'ModelForm',
@@ -205,30 +211,32 @@ export default {
     // 表单数据
     const form = reactive({
       name: '',
-      type: 'LLM',
-      version: '1.0.0',
+      model_type: 'LLM', // 更改为后端字段名
+      api_version: '1.0.0', // 更改为后端字段名
       description: '',
-      endpoint: '',
-      apiKey: '',
-      status: 'active',
+      api_base: '', // 更改为后端字段名
+      api_key: '', // 更改为后端字段名
+      provider: '', // 添加提供商字段
+      is_active: true, // 更改为后端字段名
       parameters: {
         // LLM参数
         temperature: 0.7,
-        maxTokens: 2048,
-        topP: 0.95,
+        max_tokens: 2048, // 更改为后端字段名
+        top_p: 0.95, // 更改为后端字段名
         
         // Extractor参数
-        batchSize: 100,
+        batch_size: 100, // 更改为后端字段名
         timeout: 30000,
         
         // Optimizer参数
-        optimizationLevel: 'medium',
-        enableCache: true
+        optimization_level: 'medium', // 更改为后端字段名
+        enable_cache: true // 更改为后端字段名
       },
-      concurrentRequests: 5,
-      retryStrategy: 'exponential',
-      maxRetries: 3,
-      requestTimeout: 30
+      is_default: false, // 添加默认模型字段
+      concurrent_requests: 5, // 可选的额外字段
+      retry_strategy: 'exponential', // 可选的额外字段
+      max_retries: 3, // 可选的额外字段
+      request_timeout: 30 // 可选的额外字段
     })
     
     // 表单验证规则
@@ -237,13 +245,16 @@ export default {
         { required: true, message: '请输入模型名称', trigger: 'blur' },
         { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' }
       ],
-      type: [
+      model_type: [
         { required: true, message: '请选择模型类型', trigger: 'change' }
       ],
-      version: [
+      api_version: [
         { required: true, message: '请输入模型版本', trigger: 'blur' }
       ],
-      endpoint: [
+      provider: [
+        { required: true, message: '请输入提供商', trigger: 'blur' }
+      ],
+      api_base: [
         { required: true, message: '请输入API端点', trigger: 'blur' },
         { 
           validator: (rule, value, callback) => {
@@ -257,7 +268,7 @@ export default {
           trigger: 'blur' 
         }
       ],
-      apiKey: [
+      api_key: [
         { required: !isEdit.value, message: '请输入API密钥', trigger: 'blur' }
       ]
     }
@@ -266,16 +277,16 @@ export default {
     const handleTypeChange = (type) => {
       // 不同模型类型使用不同的默认端点
       if (type === 'LLM') {
-        if (!form.endpoint) {
-          form.endpoint = 'https://api.example.com/v1/completions'
+        if (!form.api_base) {
+          form.api_base = 'https://api.example.com/v1/completions'
         }
       } else if (type === 'Extractor') {
-        if (!form.endpoint) {
-          form.endpoint = 'http://localhost:8000/extract'
+        if (!form.api_base) {
+          form.api_base = 'http://localhost:8000/extract'
         }
       } else if (type === 'Optimizer') {
-        if (!form.endpoint) {
-          form.endpoint = 'http://localhost:8001/optimize'
+        if (!form.api_base) {
+          form.api_base = 'http://localhost:8001/optimize'
         }
       }
     }
@@ -287,32 +298,10 @@ export default {
       loading.value = true
       
       try {
-        // 模拟API调用
-        setTimeout(() => {
-          // 实际项目中应该调用API获取数据
-          // const response = await api.getModelById(currentId.value)
-          // const data = response.data
-          
-          // 模拟数据
-          const data = {
-            id: currentId.value,
-            name: 'DeepSeek-SQL-7B',
-            type: 'LLM',
-            version: '1.0.0',
-            description: '基于DeepSeek-Coder的SQL生成模型，支持多种数据库方言',
-            endpoint: 'https://api.deepseek.com/v1/sql',
-            apiKey: '', // 出于安全考虑，通常不会返回密钥
-            status: 'active',
-            parameters: {
-              temperature: 0.7,
-              maxTokens: 2048,
-              topP: 0.95
-            },
-            concurrentRequests: 5,
-            retryStrategy: 'exponential',
-            maxRetries: 3,
-            requestTimeout: 30
-          }
+        // 实际API调用
+        const response = await getModel(currentId.value)
+        if (response.status === 'success') {
+          const data = response.data
           
           // 更新表单数据
           Object.keys(form).forEach(key => {
@@ -323,12 +312,13 @@ export default {
               form[key] = data[key]
             }
           })
-          
-          loading.value = false
-        }, 500)
+        } else {
+          ElMessage.error(response.message || '获取模型详情失败')
+        }
       } catch (error) {
         console.error('获取模型详情失败', error)
         ElMessage.error('获取模型详情失败')
+      } finally {
         loading.value = false
       }
     }
@@ -345,17 +335,37 @@ export default {
         loading.value = true
         
         try {
-          // 模拟API调用
-          setTimeout(() => {
-            // 实际项目中应该调用API保存数据
-            // if (isEdit.value) {
-            //   await api.updateModel(currentId.value, form)
-            // } else {
-            //   await api.createModel(form)
-            // }
-            
-            loading.value = false
-            
+          // 准备提交的数据 - 确保所有必要字段都包含在内
+          const submitData = {
+            name: form.name,
+            provider: form.provider,
+            model_type: form.model_type,
+            api_base: form.api_base,
+            api_key: form.api_key,
+            api_version: form.api_version,
+            // 不要从parameters中提取这些字段，它们应该是顶级字段
+            temperature: form.parameters.temperature,
+            max_tokens: form.parameters.max_tokens,
+            is_default: form.is_default,
+            is_active: form.is_active,
+            // 将整个parameters对象作为参数传递
+            parameters: {
+              ...form.parameters
+            }
+          }
+          
+          console.log("提交的数据:", submitData);  // 添加日志便于调试
+          
+          let response
+          if (isEdit.value) {
+            response = await updateModel(currentId.value, submitData)
+          } else {
+            response = await createModel(submitData)
+          }
+          
+          console.log("API响应:", response);  // 添加日志显示响应
+          
+          if (response && response.status === 'success') {
             ElMessage({
               message: isEdit.value ? '模型更新成功' : '模型创建成功',
               type: 'success'
@@ -363,10 +373,13 @@ export default {
             
             // 跳转到列表页
             router.push('/model/list')
-          }, 1000)
+          } else {
+            ElMessage.error(response?.message || '保存失败')
+          }
         } catch (error) {
           console.error('保存模型失败', error)
-          ElMessage.error('保存模型失败')
+          ElMessage.error('保存模型失败: ' + (error.message || '未知错误'))
+        } finally {
           loading.value = false
         }
       })
@@ -374,45 +387,46 @@ export default {
     
     // 测试连接
     const handleTest = async () => {
-      if (!formRef.value) return
+      if (!formRef.value) return;
       
       formRef.value.validate(async (valid) => {
         if (!valid) {
-          return false
+          return false;
         }
         
-        loading.value = true
+        loading.value = true;
         
         try {
-          // 模拟API调用
-          setTimeout(() => {
-            // 实际项目中应该调用API测试连接
-            // await api.testModelConnection(form)
-            
-            loading.value = false
-            
-            // 随机模拟成功或失败
-            const isSuccess = Math.random() > 0.3
-            
-            if (isSuccess) {
-              ElMessage({
-                message: '模型连接成功，响应时间: 235ms',
-                type: 'success'
-              })
-            } else {
-              ElMessage({
-                message: '模型连接失败，请检查端点或API密钥',
-                type: 'error'
-              })
-            }
-          }, 1500)
-        } catch (error) {
-          console.error('测试连接失败', error)
-          ElMessage.error('测试连接失败')
-          loading.value = false
+          // 准备测试连接的数据
+          const testData = {
+            provider: form.provider,
+            model_type: form.model_type,
+            api_key: form.api_key,
+            api_base: form.api_base
+          };
+          
+          console.log('测试连接数据:', testData);
+          
+          const response = await testModelConnection(testData);
+          console.log('测试连接响应:', response);
+          
+          // 根据响应状态显示消息
+          if (response.status === 'success') {
+            ElMessage({
+              message: '模型连接测试成功',
+              type: 'success'
+            });
+          } else {
+            ElMessage({
+              message: response.message || '模型连接测试失败',
+              type: 'error'
+            });
+          }
+        } finally {
+          loading.value = false;
         }
-      })
-    }
+      });
+    };
     
     // 取消操作
     const handleCancel = () => {

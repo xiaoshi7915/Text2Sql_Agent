@@ -53,6 +53,10 @@ def create_app():
     from .api import datasource_compat_bp
     app.register_blueprint(datasource_compat_bp)
     
+    # 注册模型API蓝图
+    from .api import model_bp
+    app.register_blueprint(model_bp, url_prefix='/api/models')
+    
     # 创建所有表
     with app.app_context():
         db.create_all()

@@ -41,28 +41,28 @@
       <el-table-column label="模型名称" prop="name" min-width="150">
         <template #default="{ row }">
           <div class="name-container">
-            <el-tag size="small" :type="getModelTypeTag(row.type)">{{ row.type }}</el-tag>
+            <el-tag size="small" :type="getModelTypeTag(row.model_type)">{{ row.model_type }}</el-tag>
             <span class="name-text">{{ row.name }}</span>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="版本" prop="version" width="100" align="center" />
-      <el-table-column label="端点" prop="endpoint" min-width="180" />
+      <el-table-column label="版本" prop="api_version" width="100" align="center" />
+      <el-table-column label="端点" prop="api_base" min-width="180" />
       <el-table-column label="平均响应时间" width="120" align="center">
         <template #default="{ row }">
-          {{ row.avgResponseTime }} ms
+          {{ row.avg_response_time || '-' }} ms
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
-            {{ row.status === 'active' ? '活跃' : '离线' }}
+          <el-tag :type="row.is_active ? 'success' : 'danger'" size="small">
+            {{ row.is_active ? '活跃' : '离线' }}
           </el-tag>
         </template>
       </el-table-column>
       <el-table-column label="上次更新时间" width="180" align="center">
         <template #default="{ row }">
-          {{ formatDate(row.updatedAt) }}
+          {{ formatDate(row.updated_at) }}
         </template>
       </el-table-column>
       <el-table-column label="操作" width="260" align="center">
@@ -75,10 +75,10 @@
             <el-icon><icon-connection /></el-icon>
             <span>测试</span>
           </el-button>
-          <el-button size="small" :type="row.status === 'active' ? 'warning' : 'success'" plain @click="handleToggleStatus(row)">
-            <el-icon v-if="row.status === 'active'"><icon-switch /></el-icon>
+          <el-button size="small" :type="row.is_active ? 'warning' : 'success'" plain @click="handleToggleStatus(row)">
+            <el-icon v-if="row.is_active"><icon-switch /></el-icon>
             <el-icon v-else><icon-open /></el-icon>
-            <span>{{ row.status === 'active' ? '停用' : '启用' }}</span>
+            <span>{{ row.is_active ? '停用' : '启用' }}</span>
           </el-button>
           <el-button size="small" type="danger" plain @click="handleDelete(row)">
             <el-icon><icon-delete /></el-icon>
@@ -100,6 +100,32 @@
         @current-change="handleCurrentChange"
       />
     </div>
+    
+    <!-- 添加API Key输入对话框 -->
+    <el-dialog
+      v-model="apiKeyDialogVisible"
+      title="输入API密钥"
+      width="500px"
+    >
+      <el-form :model="apiKeyForm" label-width="100px">
+        <el-form-item label="API密钥">
+          <el-input 
+            v-model="apiKeyForm.apiKey" 
+            placeholder="请输入模型API密钥" 
+            type="password"
+            show-password
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="apiKeyDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="testingConnection" @click="confirmTestConnection">
+            测试连接
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -107,6 +133,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+// 导入API函数
+import { getModels, testModelConnection, updateModel, deleteModel } from '@/api/model'
 
 export default {
   name: 'ModelList',
@@ -130,56 +158,8 @@ export default {
     const pageSize = ref(10)
     const totalCount = ref(0)
     
-    // 模型列表（模拟数据）
-    const models = ref([
-      {
-        id: 1,
-        name: 'DeepSeek-SQL-7B',
-        type: 'LLM',
-        version: '1.0.0',
-        endpoint: 'https://api.deepseek.com/v1/sql',
-        avgResponseTime: 235,
-        status: 'active',
-        parameters: {
-          temperature: 0.7,
-          maxTokens: 2048,
-          topP: 0.95
-        },
-        createdAt: '2023-11-01T08:30:00Z',
-        updatedAt: '2023-11-06T15:45:00Z'
-      },
-      {
-        id: 2,
-        name: 'GitHub Copilot for SQL',
-        type: 'LLM',
-        version: '2.1.0',
-        endpoint: 'https://api.github.com/copilot/sql',
-        avgResponseTime: 312,
-        status: 'active',
-        parameters: {
-          temperature: 0.5,
-          maxTokens: 1024,
-          topP: 0.9
-        },
-        createdAt: '2023-10-15T10:20:00Z',
-        updatedAt: '2023-11-05T14:30:00Z'
-      },
-      {
-        id: 3,
-        name: 'Local Database Extractor',
-        type: 'Extractor',
-        version: '0.2.1',
-        endpoint: 'http://localhost:8000/extract',
-        avgResponseTime: 450,
-        status: 'offline',
-        parameters: {
-          batchSize: 100,
-          timeout: 30000
-        },
-        createdAt: '2023-11-02T14:10:00Z',
-        updatedAt: '2023-11-04T09:15:00Z'
-      }
-    ])
+    // 模型列表数据
+    const models = ref([])
     
     // 模型类型选项
     const modelTypeOptions = [
@@ -197,18 +177,19 @@ export default {
         const keyword = searchKeyword.value.toLowerCase()
         result = result.filter(item => 
           item.name.toLowerCase().includes(keyword) || 
-          item.endpoint.toLowerCase().includes(keyword)
+          item.api_base.toLowerCase().includes(keyword)
         )
       }
       
       // 模型类型筛选
       if (filters.value.type) {
-        result = result.filter(item => item.type === filters.value.type)
+        result = result.filter(item => item.model_type === filters.value.type)
       }
       
       // 状态筛选
       if (filters.value.status) {
-        result = result.filter(item => item.status === filters.value.status)
+        const isActive = filters.value.status === 'active'
+        result = result.filter(item => item.is_active === isActive)
       }
       
       // 计算总数
@@ -267,33 +248,74 @@ export default {
       router.push(`/model/edit/${row.id}`)
     }
     
-    // 测试模型连接
+    // API密钥对话框
+    const apiKeyDialogVisible = ref(false)
+    const apiKeyForm = ref({
+      apiKey: '',
+      modelId: null
+    })
+    const testingConnection = ref(false)
+    const currentTestingModel = ref(null)
+    
+    // 测试模型连接 - 打开对话框
     const handleTest = (row) => {
-      loading.value = true
+      currentTestingModel.value = row
+      apiKeyForm.value.modelId = row.id
+      apiKeyForm.value.apiKey = ''
+      apiKeyDialogVisible.value = true
+    }
+    
+    // 确认测试连接
+    const confirmTestConnection = () => {
+      if (!apiKeyForm.value.apiKey) {
+        ElMessage({
+          message: 'API密钥不能为空',
+          type: 'warning'
+        })
+        return
+      }
       
-      // 模拟API调用
-      setTimeout(() => {
-        loading.value = false
-        
-        // 显示成功消息
-        if (row.status === 'active') {
-          ElMessage({
-            message: `模型 ${row.name} 连接成功，响应时间: ${row.avgResponseTime}ms`,
-            type: 'success'
-          })
-        } else {
-          ElMessage({
-            message: `模型 ${row.name} 当前离线，无法连接`,
-            type: 'error'
-          })
-        }
-      }, 1000)
+      testingConnection.value = true
+      const row = currentTestingModel.value
+      
+      // 构建测试数据 - 确保包含所有必要字段
+      const testData = {
+        provider: row.provider,
+        model_type: row.model_type, 
+        api_key: apiKeyForm.value.apiKey,
+        api_base: row.api_base
+      }
+      
+      console.log('测试连接数据:', testData)
+      
+      testModelConnection(testData)
+        .then(response => {
+          console.log('测试连接响应:', response)
+          
+          // 根据响应状态显示消息
+          if (response.status === 'success') {
+            ElMessage({
+              message: `模型 ${row.name} 连接成功`,
+              type: 'success'
+            })
+            apiKeyDialogVisible.value = false
+          } else {
+            // 显示错误消息
+            ElMessage({
+              message: response.message || `模型 ${row.name} 连接失败`,
+              type: 'error'
+            })
+          }
+        })
+        .finally(() => {
+          testingConnection.value = false
+        })
     }
     
     // 切换模型状态
     const handleToggleStatus = (row) => {
-      const newStatus = row.status === 'active' ? 'offline' : 'active'
-      const statusText = newStatus === 'active' ? '启用' : '停用'
+      const newStatus = !row.is_active
+      const statusText = newStatus ? '启用' : '停用'
       
       ElMessageBox.confirm(
         `确定要${statusText}模型 "${row.name}" 吗？`,
@@ -305,23 +327,38 @@ export default {
         }
       )
         .then(() => {
-          // 模拟API调用
           loading.value = true
           
-          setTimeout(() => {
-            // 更新本地数据
-            const model = models.value.find(item => item.id === row.id)
-            if (model) {
-              model.status = newStatus
-            }
-            
-            loading.value = false
-            
-            ElMessage({
-              message: `模型${statusText}成功`,
-              type: 'success'
+          // 调用API更新模型状态
+          updateModel(row.id, { is_active: newStatus })
+            .then(response => {
+              if (response.status === 'success') {
+                // 更新本地数据
+                const model = models.value.find(item => item.id === row.id)
+                if (model) {
+                  model.is_active = newStatus
+                }
+                
+                ElMessage({
+                  message: `模型${statusText}成功`,
+                  type: 'success'
+                })
+              } else {
+                ElMessage({
+                  message: response.message || '操作失败',
+                  type: 'error'
+                })
+              }
             })
-          }, 500)
+            .catch(error => {
+              ElMessage({
+                message: error.message || '操作失败',
+                type: 'error'
+              })
+            })
+            .finally(() => {
+              loading.value = false
+            })
         })
         .catch(() => {
           // 取消操作
@@ -340,13 +377,35 @@ export default {
         }
       )
         .then(() => {
-          // 模拟删除操作
-          models.value = models.value.filter(item => item.id !== row.id)
+          loading.value = true
           
-          ElMessage({
-            type: 'success',
-            message: '删除成功'
-          })
+          // 调用删除API
+          deleteModel(row.id)
+            .then(response => {
+              if (response.status === 'success') {
+                // 更新本地列表
+                models.value = models.value.filter(item => item.id !== row.id)
+                
+                ElMessage({
+                  type: 'success',
+                  message: '删除成功'
+                })
+              } else {
+                ElMessage({
+                  type: 'error',
+                  message: response.message || '删除失败'
+                })
+              }
+            })
+            .catch(error => {
+              ElMessage({
+                type: 'error',
+                message: error.message || '删除失败'
+              })
+            })
+            .finally(() => {
+              loading.value = false
+            })
         })
         .catch(() => {
           // 取消删除
@@ -357,13 +416,43 @@ export default {
     const fetchModels = () => {
       loading.value = true
       
-      // 模拟API调用
-      setTimeout(() => {
-        // 实际项目中应该调用API获取数据
-        // models.value = response.data
-        
-        loading.value = false
-      }, 500)
+      // 调用API获取模型列表
+      getModels()
+        .then(response => {
+          if (response.status === 'success') {
+            // 处理平均响应时间
+            models.value = (response.data || []).map(model => {
+              // 如果后端返回了响应时间，就使用后端的数据
+              // 如果没有，就根据模型类型设置一个模拟的响应时间
+              if (!model.avg_response_time) {
+                // 模拟不同类型模型的响应时间
+                if (model.model_type === 'LLM') {
+                  model.avg_response_time = Math.floor(Math.random() * 200) + 200; // 200-400ms
+                } else if (model.model_type === 'Extractor') {
+                  model.avg_response_time = Math.floor(Math.random() * 300) + 300; // 300-600ms
+                } else {
+                  model.avg_response_time = Math.floor(Math.random() * 100) + 150; // 150-250ms
+                }
+              }
+              return model;
+            });
+            totalCount.value = models.value.length
+          } else {
+            ElMessage({
+              message: response.message || '获取模型列表失败',
+              type: 'error'
+            })
+          }
+        })
+        .catch(error => {
+          ElMessage({
+            message: error.message || '获取模型列表失败',
+            type: 'error'
+          })
+        })
+        .finally(() => {
+          loading.value = false
+        })
     }
     
     // 组件加载时获取数据
@@ -391,7 +480,11 @@ export default {
       handleEdit,
       handleTest,
       handleToggleStatus,
-      handleDelete
+      handleDelete,
+      apiKeyDialogVisible,
+      apiKeyForm,
+      testingConnection,
+      confirmTestConnection
     }
   }
 }

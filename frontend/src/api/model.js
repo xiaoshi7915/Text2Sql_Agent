@@ -32,5 +32,18 @@ export function getDefaultModel() {
 
 // 测试模型连接
 export function testModelConnection(data) {
-  return post('/models/test-connection', data)
+  // 确保包含所有必要字段
+  const testData = {
+    provider: data.provider || '',
+    model_type: data.model_type || 'LLM',
+    api_key: data.api_key || ''
+  };
+  
+  // 添加API基础URL（如果有）
+  if (data.api_base) {
+    testData.api_base = data.api_base;
+  }
+  
+  console.log("发送测试连接请求:", testData);
+  return post('/models/test-connection', testData);
 } 

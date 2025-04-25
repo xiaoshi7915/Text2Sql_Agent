@@ -38,6 +38,11 @@ service.interceptors.response.use(
     // 对响应数据的处理
     const res = response.data
     
+    // 特殊处理：如果是测试连接接口，直接返回结果，无论成功或失败
+    if (response.config.url.includes('/test-connection')) {
+      return res;
+    }
+    
     // 根据后端API的响应结构判断请求是否成功
     if (res.status === 'success') {
       return res
@@ -53,9 +58,7 @@ service.interceptors.response.use(
       
       // 处理401未授权错误
       if (response.status === 401) {
-        // 可以在这里处理登出逻辑，清除token等
         localStorage.removeItem('token')
-        // 跳转到登录页
         window.location.href = '/login'
       }
       
@@ -68,6 +71,28 @@ service.interceptors.response.use(
     // 响应错误的处理
     console.error('响应错误:', error)
     
+    // 特殊处理测试连接API的错误响应
+    if (error.config && error.config.url && error.config.url.includes('/test-connection')) {
+      let errorResponse = {
+        status: 'error',
+        message: '连接测试失败'
+      };
+      
+      // 尝试从错误响应中提取更详细的信息
+      if (error.response && error.response.data) {
+        if (typeof error.response.data === 'object') {
+          errorResponse = error.response.data;
+        } else {
+          errorResponse.message = error.response.data.toString();
+        }
+      } else if (error.message) {
+        errorResponse.message = error.message;
+      }
+      
+      // 直接返回错误信息而不是抛出异常
+      return errorResponse;
+    }
+    
     // 处理HTTP状态码的错误
     if (error.response) {
       const status = error.response.status
@@ -79,7 +104,6 @@ service.interceptors.response.use(
           break
         case 401:
           message = '未授权，请登录'
-          // 清除token并跳转到登录页
           localStorage.removeItem('token')
           window.location.href = '/login'
           break

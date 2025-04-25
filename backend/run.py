@@ -15,5 +15,6 @@ from app import create_app
 app = create_app()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    # 修改默认端口为5001，避免与其他服务冲突
+    port = int(os.environ.get('PORT', 5001))
     app.run(debug=True, host='0.0.0.0', port=port) 

@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
-from backend.app.models import db, Model
+from app.models.model import Model
+from app.models import db
 from sqlalchemy.exc import SQLAlchemyError
 from cryptography.fernet import Fernet
 import os
@@ -290,12 +291,11 @@ def test_connection():
                     'message': f'缺少必要字段: {field}'
                 }), 400
                 
-        # 测试连接逻辑将在服务层实现
-        # 这里暂时返回模拟成功
-        return jsonify({
-            'status': 'success',
-            'message': '模型连接测试成功'
-        }), 200
+        # 调用LLM服务层实现的测试连接功能
+        from app.services.llm_service import LLMService
+        result = LLMService.test_connection(data)
+        
+        return jsonify(result), 200 if result['status'] == 'success' else 400
         
     except Exception as e:
         current_app.logger.error(f"模型连接测试失败: {str(e)}")
