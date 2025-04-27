@@ -5,11 +5,12 @@ class Conversation(db.Model):
     """用户与AI的会话模型"""
     
     __tablename__ = 'conversations'
+    __table_args__ = {'extend_existing': True}
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title = db.Column(db.String(255), nullable=True, comment='会话标题')
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, comment='用户ID')
-    model_id = db.Column(db.Integer, db.ForeignKey('models.id'), nullable=False, comment='使用的模型ID')
+    model_id = db.Column(db.Integer, db.ForeignKey('models.id'), nullable=True, comment='使用的模型ID')
     is_active = db.Column(db.Boolean, default=True, comment='是否活跃')
     created_at = db.Column(db.DateTime, default=datetime.now, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
@@ -39,6 +40,7 @@ class Message(db.Model):
     """会话中的消息模型"""
     
     __tablename__ = 'messages'
+    __table_args__ = {'extend_existing': True}
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     conversation_id = db.Column(db.Integer, db.ForeignKey('conversations.id'), nullable=False, comment='会话ID')

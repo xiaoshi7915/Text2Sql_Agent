@@ -2,19 +2,24 @@
 应用启动脚本
 """
 
-import os
 import sys
+import os
 import os.path
 
-# 确保当前目录在路径中
+# 确保路径正确
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, backend_dir)
 
+# 导入Flask应用
 from app import create_app
 
+# 创建应用实例
 app = create_app()
 
 if __name__ == '__main__':
-    # 修改默认端口为5001，避免与其他服务冲突
-    port = int(os.environ.get('PORT', 5001))
-    app.run(debug=True, host='0.0.0.0', port=port) 
+    # 运行Flask应用
+    app.run(
+        host='0.0.0.0',
+        port=5001,
+        debug=True
+    ) 

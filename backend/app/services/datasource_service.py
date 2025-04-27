@@ -376,6 +376,111 @@ class DataSourceService:
             logger.error(f"更新数据源信息失败: {str(e)}")
             return False, str(e)
 
+    def get_tables(self, datasource_id):
+        """获取数据源中的所有表信息
+        
+        Args:
+            datasource_id: 数据源ID
+            
+        Returns:
+            dict: 包含表信息的字典
+        """
+        try:
+            # 获取数据源信息
+            success, datasource_data, error = self.get_datasource_by_id(datasource_id)
+            if not success or not datasource_data:
+                logger.error(f"获取数据源失败: {error}")
+                return None
+                
+            # 创建连接器
+            connector = ConnectorFactory.create_connector(
+                datasource_data['ds_type'],
+                datasource_data['host'],
+                datasource_data['port'],
+                datasource_data['database'],
+                datasource_data['username'],
+                decrypt_password(datasource_data['password'])
+            )
+            
+            # 获取表信息
+            tables_info = connector.get_tables_info()
+            
+            if tables_info:
+                return {
+                    'tables': tables_info,
+                    'datasource': datasource_data['name']
+                }
+            else:
+                logger.warning(f"数据源 {datasource_id} 未返回表信息")
+                return {'tables': [], 'datasource': datasource_data['name']}
+                
+        except Exception as e:
+            logger.error(f"获取表信息失败: {str(e)}")
+            return None
+    
+    def get_sample_data(self, datasource_id, table_name, limit=5):
+        """获取表的样本数据
+        
+        Args:
+            datasource_id: 数据源ID
+            table_name: 表名
+            limit: 返回的最大行数
+            
+        Returns:
+            list: 样本数据行
+        """
+        try:
+            # 获取数据源信息
+            success, datasource_data, error = self.get_datasource_by_id(datasource_id)
+            if not success or not datasource_data:
+                logger.error(f"获取数据源失败: {error}")
+                return None
+                
+            # 创建SQL查询
+            sql = f"SELECT * FROM {table_name} LIMIT {limit}"
+            
+            # 执行查询
+            return self.execute_read_query(datasource_id, sql)
+                
+        except Exception as e:
+            logger.error(f"获取样本数据失败: {str(e)}")
+            return None
+    
+    def execute_read_query(self, datasource_id, sql):
+        """执行只读SQL查询
+        
+        Args:
+            datasource_id: 数据源ID
+            sql: SQL查询语句
+            
+        Returns:
+            list: 查询结果
+        """
+        try:
+            # 获取数据源信息
+            success, datasource_data, error = self.get_datasource_by_id(datasource_id)
+            if not success or not datasource_data:
+                logger.error(f"获取数据源失败: {error}")
+                return None
+                
+            # 创建连接器
+            connector = ConnectorFactory.create_connector(
+                datasource_data['ds_type'],
+                datasource_data['host'],
+                datasource_data['port'],
+                datasource_data['database'],
+                datasource_data['username'],
+                decrypt_password(datasource_data['password'])
+            )
+            
+            # 执行查询
+            result = connector.execute_query(sql)
+            return result
+                
+        except Exception as e:
+            logger.error(f"执行查询失败: {str(e)}")
+            raise Exception(f"执行查询失败: {str(e)}")
+
 def format_connection_error(error_str):
     """格式化连接错误信息，提供更友好的错误描述和解决方案
 

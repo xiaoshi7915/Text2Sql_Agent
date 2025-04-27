@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, create_refresh_token
 from app.models import User, db
 from datetime import datetime, timedelta
+from app.api.chat import jwt_or_demo_required, get_identity
 
 # 创建认证蓝图
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
@@ -56,7 +57,7 @@ def login():
 @jwt_required(refresh=True)
 def refresh():
     """刷新访问令牌"""
-    current_user_id = get_jwt_identity()
+    current_user_id = get_identity()
     new_access_token = create_access_token(identity=current_user_id)
     
     return jsonify({
@@ -65,10 +66,10 @@ def refresh():
     }), 200
 
 @auth_bp.route('/user-info', methods=['GET'])
-@jwt_required()
+@jwt_or_demo_required()
 def get_user_info():
     """获取当前登录用户信息"""
-    current_user_id = get_jwt_identity()
+    current_user_id = get_identity()
     user = User.query.get(current_user_id)
     
     if not user:
@@ -98,7 +99,7 @@ def logout():
     }), 200
 
 @auth_bp.route('/change-password', methods=['POST'])
-@jwt_required()
+@jwt_or_demo_required()
 def change_password():
     """修改密码"""
     data = request.json
@@ -118,7 +119,7 @@ def change_password():
             'message': '新密码和确认密码不匹配'
         }), 400
     
-    current_user_id = get_jwt_identity()
+    current_user_id = get_identity()
     user = User.query.get(current_user_id)
     
     if not user:

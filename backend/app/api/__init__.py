@@ -44,6 +44,9 @@ def redirect_test_connection():
 # 创建模型蓝图
 from .models import model_bp
 
+# 创建聊天蓝图
+from .chat import chat_bp
+
 # 不要重复导入同样的功能
 # 移除冗余文件引用
 # 注释掉重复的导入，解决表重复定义问题

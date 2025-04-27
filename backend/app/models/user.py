@@ -3,9 +3,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from . import db
 
 class User(db.Model):
-    """用户模型"""
+    """用户模型，管理员用户可以管理系统的各种配置"""
     
     __tablename__ = 'users'
+    __table_args__ = {'extend_existing': True}
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(64), unique=True, nullable=False, comment='用户名')

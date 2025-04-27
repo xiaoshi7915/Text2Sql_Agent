@@ -4,6 +4,8 @@ from app.models import db
 from sqlalchemy.exc import SQLAlchemyError
 from cryptography.fernet import Fernet
 import os
+import hashlib
+from base64 import urlsafe_b64encode
 
 # 创建蓝图
 model_bp = Blueprint('models', __name__)
@@ -16,9 +18,12 @@ def get_encryption_key():
         return key_env.encode()
     
     # 如果环境变量不存在，使用应用密钥的派生键
+    # 获取应用的SECRET_KEY并转换为32字节的密钥
     secret_key = current_app.config['SECRET_KEY']
-    # 使用固定长度密钥
-    return Fernet.generate_key()
+    # 使用SHA-256哈希函数将SECRET_KEY转换为32字节
+    derived_key = hashlib.sha256(secret_key.encode()).digest()
+    # 用base64编码使其符合Fernet密钥格式
+    return urlsafe_b64encode(derived_key)
 
 def encrypt_api_key(api_key):
     """加密API密钥"""

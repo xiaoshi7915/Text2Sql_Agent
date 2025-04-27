@@ -5,6 +5,7 @@ class Model(db.Model):
     """大语言模型配置模型"""
     
     __tablename__ = 'models'
+    __table_args__ = {'extend_existing': True}
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False, comment='模型名称')
